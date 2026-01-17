@@ -25,6 +25,9 @@ struct LoginResponse {
 #[derive(Clone)]
 struct AppState {
     redis_client: redis::Client,
+    key_devices_index: String,
+    key_agents_index: String,
+    key_config: String,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -66,8 +69,10 @@ async fn list_devices(State(state): State<AppState>) -> impl IntoResponse {
         Ok(c) => c,
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
-    // 设备集合索引可为 "devices" 或按需调整
-    let macs: Vec<String> = conn.smembers("devices").await.unwrap_or_default();
+    let macs: Vec<String> = conn
+        .smembers(state.key_devices_index.clone())
+        .await
+        .unwrap_or_default();
     let mut devices: Vec<Device> = Vec::new();
     for mac in macs {
         let key = format!("device:{}", mac);
@@ -118,8 +123,10 @@ async fn get_agents(State(state): State<AppState>) -> impl IntoResponse {
         Ok(c) => c,
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
-    // 约定 agent 列表索引为 "agents"
-    let ids: Vec<String> = conn.smembers("agents").await.unwrap_or_default();
+    let ids: Vec<String> = conn
+        .smembers(state.key_agents_index.clone())
+        .await
+        .unwrap_or_default();
     let mut agents: Vec<Agent> = Vec::new();
     for id in ids {
         let key = format!("agent:{}", id);
@@ -166,8 +173,7 @@ async fn get_config(State(state): State<AppState>) -> impl IntoResponse {
         Ok(c) => c,
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
-    // 约定 config key，可根据实际调整
-    let key = "config:global";
+    let key = state.key_config.clone();
     let map: redis::RedisResult<std::collections::HashMap<String, String>> =
         conn.hgetall(key).await;
     match map {
@@ -202,7 +208,14 @@ async fn main() {
     let redis_url =
         std::env::var("ELOQKV_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
     let redis_client = redis::Client::open(redis_url).expect("invalid redis url");
-    let state = AppState { redis_client };
+    let state = AppState {
+        redis_client,
+        key_devices_index: std::env::var("KEY_DEVICES_INDEX")
+            .unwrap_or_else(|_| "devices".to_string()),
+        key_agents_index: std::env::var("KEY_AGENTS_INDEX")
+            .unwrap_or_else(|_| "agents".to_string()),
+        key_config: std::env::var("KEY_CONFIG").unwrap_or_else(|_| "config:global".to_string()),
+    };
 
     let app = Router::new()
         .route("/api/auth/login", post(login))
