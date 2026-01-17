@@ -1,0 +1,66 @@
+name: CI Guardrails
+
+on:
+  pull_request:
+    branches:
+      - orica-refactor
+  push:
+    branches:
+      - orica-refactor
+
+jobs:
+  guardrails:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python syntax check (core paths)
+        run: |
+          set -e
+          python -m py_compile main/xiaozhi-server/app.py
+          # TODO: add ruff/flake8 with ruleset from CI_GUARDRAILS.md
+
+      - name: Rust fmt/check (if cargo workspace exists)
+        run: |
+          set -e
+          if [ -f Cargo.toml ]; then
+            cargo fmt --check
+            cargo check
+          else
+            echo "No Cargo.toml, skipping Rust checks"
+          fi
+
+      - name: Node lint placeholder (Svelte/Vue)
+        run: |
+          set -e
+          if [ -f package.json ]; then
+            npm install --prefer-offline --no-progress
+            npm run lint || echo "lint script missing, skipping"
+          else
+            echo "No package.json, skipping JS lint"
+          fi
+
+      - name: OpenAPI contract placeholder
+        run: |
+          echo "TODO: add OpenAPI generation and diff per CI_GUARDRAILS.md"
+
+      - name: Forbidden patterns scan (baseline)
+        run: |
+          set -e
+          # Rust: block unsafe/impl Trait/<T>/closures in src if present
+          if [ -d src ]; then
+            if rg "unsafe" src; then echo "Found unsafe in Rust code"; exit 1; fi
+            if rg "impl\s+Trait" src; then echo "Found impl Trait"; exit 1; fi
+            if rg "<[A-Za-z0-9_]+>" src; then echo "Found generics-like pattern"; exit 1; fi
+            if rg "\|" src; then echo "Found possible closures"; exit 1; fi
+          fi
+          # Svelte: block context/actions/derived
+          if [ -d web ] || [ -d main/manager-web ] || [ -d main/manager-mobile ]; then
+            if rg "setContext|getContext|use:" .; then echo "Found forbidden Svelte/Vue actions/context"; exit 1; fi
+            if rg "derived" .; then echo "Found forbidden derived stores"; exit 1; fi
+          fi
+          # Python: discourage eval/exec
+          if rg "eval\(" main/xiaozhi-server; then echo "Found eval in Python"; exit 1; fi
+          if rg "exec\(" main/xiaozhi-server; then echo "Found exec in Python"; exit 1; fi
+
