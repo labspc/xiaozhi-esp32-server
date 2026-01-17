@@ -51,6 +51,7 @@ cat > "$OUTPUT" <<'EOF'
       "get": {
         "summary": "Get device",
         "parameters": [{ "in": "path", "name": "mac", "required": true, "schema": { "type": "string" } }],
+        "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Device" } } } },
           "404": { "description": "Not found" }
@@ -60,6 +61,7 @@ cat > "$OUTPUT" <<'EOF'
     "/api/agents": {
       "get": {
         "summary": "List agents",
+        "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
             "description": "OK",
@@ -79,6 +81,7 @@ cat > "$OUTPUT" <<'EOF'
       "get": {
         "summary": "Get agent",
         "parameters": [{ "in": "path", "name": "id", "required": true, "schema": { "type": "string" } }],
+        "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Agent" } } } },
           "404": { "description": "Not found" }
@@ -88,6 +91,7 @@ cat > "$OUTPUT" <<'EOF'
     "/api/config": {
       "get": {
         "summary": "Get config",
+        "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Config" } } } },
           "404": { "description": "Not found" }
@@ -140,6 +144,13 @@ cat > "$OUTPUT" <<'EOF'
           "llm_model_id": { "type": "string", "nullable": true },
           "extra": { "type": "object", "nullable": true }
         }
+      }
+    }
+    ,
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
       }
     }
   }
