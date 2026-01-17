@@ -32,7 +32,7 @@ struct AppState {
 
 #[derive(Serialize, Deserialize, Default)]
 struct Device {
-    mac_address: String,
+    mac: String,
     user_id: Option<String>,
     agent_id: Option<String>,
     alias: Option<String>,
@@ -80,7 +80,7 @@ async fn list_devices(State(state): State<AppState>) -> impl IntoResponse {
             conn.hgetall(key).await;
         if let Ok(data) = map {
             devices.push(Device {
-                mac_address: mac.clone(),
+                mac: mac.clone(),
                 user_id: data.get("user_id").cloned(),
                 agent_id: data.get("agent_id").cloned(),
                 alias: data.get("alias").cloned(),
@@ -104,7 +104,7 @@ async fn get_device(State(state): State<AppState>, Path(mac): Path<String>) -> i
     match map {
         Ok(data) if !data.is_empty() => {
             let device = Device {
-                mac_address: mac.clone(),
+                mac: mac.clone(),
                 user_id: data.get("user_id").cloned(),
                 agent_id: data.get("agent_id").cloned(),
                 alias: data.get("alias").cloned(),
