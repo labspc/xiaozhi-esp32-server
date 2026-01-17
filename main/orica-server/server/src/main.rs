@@ -47,6 +47,14 @@ struct Agent {
     llm_model_id: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Default)]
+struct Config {
+    // 根据实际 EloqKV 配置结构扩展
+    ws_url: Option<String>,
+    http_url: Option<String>,
+    extra: Option<serde_json::Value>,
+}
+
 async fn login(Json(payload): Json<LoginRequest>) -> impl IntoResponse {
     // TODO: replace with real JWT auth and EloqKV lookup
     let token = format!("dummy-{}", payload.username);
@@ -153,6 +161,28 @@ async fn get_agent(State(state): State<AppState>, Path(id): Path<String>) -> imp
     }
 }
 
+async fn get_config(State(state): State<AppState>) -> impl IntoResponse {
+    let mut conn = match state.redis_client.get_multiplexed_async_connection().await {
+        Ok(c) => c,
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+    // 约定 config key，可根据实际调整
+    let key = "config:global";
+    let map: redis::RedisResult<std::collections::HashMap<String, String>> =
+        conn.hgetall(key).await;
+    match map {
+        Ok(data) if !data.is_empty() => {
+            let cfg = Config {
+                ws_url: data.get("ws_url").cloned(),
+                http_url: data.get("http_url").cloned(),
+                extra: None,
+            };
+            Json(cfg).into_response()
+        }
+        _ => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
 async fn websocket_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
     ws.on_upgrade(handle_socket)
 }
@@ -180,6 +210,7 @@ async fn main() {
         .route("/api/devices/:mac", get(get_device))
         .route("/api/agents", get(get_agents))
         .route("/api/agents/:id", get(get_agent))
+        .route("/api/config", get(get_config))
         .route("/xiaozhi/v1/", get(websocket_handler))
         .route("/orica/v1/", get(websocket_handler))
         .with_state(state);
