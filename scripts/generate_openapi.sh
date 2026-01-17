@@ -32,6 +32,7 @@ cat > "$OUTPUT" <<'EOF'
     "/api/devices": {
       "get": {
         "summary": "List devices",
+        "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
             "description": "OK",
@@ -43,7 +44,8 @@ cat > "$OUTPUT" <<'EOF'
                 }
               }
             }
-          }
+          },
+          "401": { "description": "Unauthorized" }
         }
       }
     },
@@ -54,6 +56,7 @@ cat > "$OUTPUT" <<'EOF'
         "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Device" } } } },
+          "401": { "description": "Unauthorized" },
           "404": { "description": "Not found" }
         }
       }
@@ -73,7 +76,8 @@ cat > "$OUTPUT" <<'EOF'
                 }
               }
             }
-          }
+          },
+          "401": { "description": "Unauthorized" }
         }
       }
     },
@@ -84,6 +88,7 @@ cat > "$OUTPUT" <<'EOF'
         "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Agent" } } } },
+          "401": { "description": "Unauthorized" },
           "404": { "description": "Not found" }
         }
       }
@@ -94,6 +99,7 @@ cat > "$OUTPUT" <<'EOF'
         "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Config" } } } },
+          "401": { "description": "Unauthorized" },
           "404": { "description": "Not found" }
         }
       }
@@ -145,8 +151,7 @@ cat > "$OUTPUT" <<'EOF'
           "extra": { "type": "object", "nullable": true }
         }
       }
-    }
-    ,
+    },
     "securitySchemes": {
       "bearerAuth": {
         "type": "http",
