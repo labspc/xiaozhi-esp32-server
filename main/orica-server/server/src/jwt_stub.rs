@@ -14,8 +14,12 @@ fn secret() -> String {
 }
 
 pub fn issue_token(username: &str) -> String {
+    let hours = env::var("JWT_EXP_HOURS")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(1);
     let exp = Utc::now()
-        .checked_add_signed(Duration::hours(1))
+        .checked_add_signed(Duration::hours(hours))
         .map(|t| t.timestamp())
         .unwrap_or_else(|| Utc::now().timestamp());
     let claims = Claims {

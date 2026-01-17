@@ -46,7 +46,7 @@ cat > "$OUTPUT" <<'EOF'
               }
             }
           },
-          "401": { "description": "Unauthorized" }
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
@@ -57,8 +57,8 @@ cat > "$OUTPUT" <<'EOF'
         "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Device" } } } },
-          "401": { "description": "Unauthorized" },
-          "404": { "description": "Not found" }
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
@@ -74,10 +74,12 @@ cat > "$OUTPUT" <<'EOF'
                 "schema": {
                   "type": "object",
                   "properties": { "agents": { "type": "array", "items": { "$ref": "#/components/schemas/Agent" } } }
-                }
-              }
             }
           },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
           "401": { "description": "Unauthorized" }
         }
       }
@@ -89,8 +91,8 @@ cat > "$OUTPUT" <<'EOF'
         "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Agent" } } } },
-          "401": { "description": "Unauthorized" },
-          "404": { "description": "Not found" }
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
@@ -100,8 +102,8 @@ cat > "$OUTPUT" <<'EOF'
         "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Config" } } } },
-          "401": { "description": "Unauthorized" },
-          "404": { "description": "Not found" }
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
@@ -150,6 +152,12 @@ cat > "$OUTPUT" <<'EOF'
           "asr_model_id": { "type": "string", "nullable": true },
           "llm_model_id": { "type": "string", "nullable": true },
           "extra": { "type": "object", "nullable": true }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "nullable": true }
         }
       }
     },
