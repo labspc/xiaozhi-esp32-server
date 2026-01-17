@@ -14,7 +14,9 @@ use tokio::net::TcpListener;
 use tracing::{error, info, Level};
 
 mod auth;
+mod jwt_stub;
 use auth::check_auth;
+use jwt_stub::issue_token;
 
 #[derive(Serialize, Deserialize)]
 struct LoginRequest {
@@ -68,7 +70,7 @@ struct Config {
 
 async fn login(Json(payload): Json<LoginRequest>) -> impl IntoResponse {
     // TODO: replace with real JWT auth and EloqKV lookup
-    let token = format!("dummy-{}", payload.username);
+    let token = issue_token(&payload.username);
     Json(LoginResponse { token })
 }
 
@@ -244,16 +246,27 @@ async fn handle_socket(mut stream: axum::extract::ws::WebSocket) {
     while let Some(Ok(msg)) = stream.recv().await {
         match msg {
             axum::extract::ws::Message::Text(text) => {
-                let result = call_python_text(&text);
-                if let Err(err) = result {
-                    error!("python text error: {:?}", err);
-                } else if let Ok(output) = result {
-                    if stream
-                        .send(axum::extract::ws::Message::Text(output.unwrap_or(text)))
-                        .await
-                        .is_err()
-                    {
-                        break;
+                match call_python_text(&text) {
+                    Ok(Some(out)) => {
+                        if stream
+                            .send(axum::extract::ws::Message::Text(out))
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                    Ok(None) => {
+                        if stream
+                            .send(axum::extract::ws::Message::Text(text))
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                    Err(err) => {
+                        error!("python text error: {:?}", err);
                     }
                 }
             }
