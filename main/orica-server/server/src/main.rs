@@ -205,7 +205,7 @@ async fn handle_socket(stream: axum::extract::ws::WebSocket) {
 fn call_python_stub() -> PyResult<()> {
     Python::with_gil(|py| {
         let msg = "ws connection received";
-        let builtins = py.import("builtins")?;
+        let builtins = py.import_bound("builtins")?;
         let print = builtins.getattr("print")?;
         print.call1((msg,))?;
         Ok(())
