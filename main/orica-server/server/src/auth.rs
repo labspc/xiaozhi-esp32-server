@@ -1,11 +1,11 @@
 use axum::http::HeaderMap;
+use std::env;
 
-// 简单 token 校验占位，需替换为真实 JWT 验证
+/// 简易鉴权：校验 Bearer 与环境变量 AUTH_TOKEN（默认 "dummy-token"）
 pub fn check_auth(headers: &HeaderMap) -> bool {
-    if let Some(value) = headers.get("authorization") {
-        if let Ok(token) = value.to_str() {
-            return token.starts_with("Bearer ");
-        }
+    let expected = env::var("AUTH_TOKEN").unwrap_or_else(|_| "dummy-token".to_string());
+    match headers.get("authorization").and_then(|h| h.to_str().ok()) {
+        Some(v) if v == format!("Bearer {}", expected) => true,
+        _ => false,
     }
-    false
 }
