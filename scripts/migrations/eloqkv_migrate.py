@@ -1,15 +1,15 @@
 """
-EloqKV 迁移脚本骨架
+EloqKV 迁移脚本骨架（目标存储为 KV/JSON，迁移后不再依赖 SQL 查询）。
 
 目标：
-- 从 MySQL/Redis 拉取核心数据（用户/设备/agent/会话/聊天分片）
-- 写入 EloqKV，支持全量与增量模式
-- 输出校验报告（行数、哈希、抽样业务查询）
+- 从现有 MySQL/Redis 导出数据（仅作为源），写入 EloqKV（兼容 redis 协议）
+- 支持全量与增量（基于时间戳/自增 id）
+- 输出校验报告（行数、哈希、抽样查询），并构建必要索引 Key
 
 注意：
-- 填写实际连接字符串和查询语句
-- 运行前先影子环境验证；正式迁移前切只读标记
-- 对照 docs-refactor/ELOQKV_KEYS.md 的 Key 规范
+- 迁移完成后，服务仅依赖 EloqKV（KV/JSON），不再依赖 SQL 查询能力
+- 按 docs-refactor/ELOQKV_KEYS.md 的 Key 规范写入，构建索引 Key（用户名、设备索引等）
+- 按 MIGRATION_RUNBOOK 进行影子/增量/切换/回滚
 """
 
 import argparse
@@ -24,21 +24,17 @@ ELOQKV_DSN = os.getenv("ELOQKV_DSN", "redis://host:6379")
 def get_mysql_conn():
     """
     返回 MySQL 连接；需要安装 mysql-connector-python 或 pymysql。
-    用实际库替换注释。
     """
     try:
         import mysql.connector  # type: ignore
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError("Please install mysql-connector-python") from exc
-    # DSN 示例：mysql+mysqlconnector://user:password@host:3306/db 不直接被 mysql.connector 解析
-    # 用户需根据环境拆分 DSN；这里简化为使用环境变量各项
     return mysql.connector.connect(option_files=None, option_groups=None, dsn=MYSQL_DSN)
 
 
 def get_eloqkv_client():
     """
-    返回 EloqKV 客户端；可兼容 redis 协议。
-    用实际库替换注释。
+    返回 EloqKV 客户端；兼容 redis 协议（可用 redis-rs/redis-py 服务端）。
     """
     try:
         import redis  # type: ignore
@@ -57,7 +53,10 @@ def hash_dict(d: Dict[str, Any]) -> str:
 
 
 def migrate_users(since: Optional[str] = None) -> List[str]:
-    """示例：迁移用户表，返回校验哈希列表。"""
+    """
+    迁移用户：写入 user:{id}，并可选建立用户名索引。
+    返回校验哈希列表。
+    """
     conn = get_mysql_conn()
     cursor = conn.cursor(dictionary=True)
     sql = "SELECT id, username, password, email, create_date as created_at, update_date as updated_at FROM sys_user"
@@ -72,12 +71,17 @@ def migrate_users(since: Optional[str] = None) -> List[str]:
     for row in rows:
         key = f"user:{row['id']}"
         client.hset(key, mapping=row)  # type: ignore[attr-defined]
+        if "username" in row:
+            client.set(f"user:username:{row['username']}", row["id"])  # type: ignore[attr-defined]
         hashes.append(hash_dict(row))
     return hashes
 
 
 def migrate_devices(since: Optional[str] = None) -> List[str]:
-    """示例：迁移设备表，返回校验哈希列表。"""
+    """
+    迁移设备：写入 device:{mac}，并建立用户到设备的索引。
+    返回校验哈希列表。
+    """
     conn = get_mysql_conn()
     cursor = conn.cursor(dictionary=True)
     sql = "SELECT mac_address, user_id, agent_id, last_connected_at as last_seen, firmware_version, board, alias FROM ai_device"
@@ -90,14 +94,17 @@ def migrate_devices(since: Optional[str] = None) -> List[str]:
     client = get_eloqkv_client()
     hashes: List[str] = []
     for row in rows:
-        key = f"device:{row['mac_address']}"
+        mac = row["mac_address"]
+        key = f"device:{mac}"
         client.hset(key, mapping=row)  # type: ignore[attr-defined]
+        if row.get("user_id"):
+            client.sadd(f"device:user:{row['user_id']}", mac)  # type: ignore[attr-defined]
         hashes.append(hash_dict(row))
     return hashes
 
 
 def migrate_agents(since: Optional[str] = None) -> List[str]:
-    """示例：迁移 agent 配置。"""
+    """迁移 agent 配置。"""
     conn = get_mysql_conn()
     cursor = conn.cursor(dictionary=True)
     sql = """
