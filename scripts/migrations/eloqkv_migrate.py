@@ -17,7 +17,7 @@ import hashlib
 import os
 import sys
 from urllib.parse import urlparse
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 MYSQL_DSN = os.getenv("MYSQL_DSN", "mysql://user:password@host:3306/db")
 ELOQKV_DSN = os.getenv("ELOQKV_DSN", "redis://host:6379")
@@ -146,12 +146,22 @@ def migrate_chat_shard(date_str: str, dry_run: bool = False) -> int:
     示例：迁移某日的聊天分片。
     返回迁移条数，用于统计。
     """
-    # TODO: 拉取 chat_history 按日期分片
-    messages: List[Dict[str, Any]] = []
+    # TODO: 拉取 chat_history 按日期分片（按实际表字段调整）
+    conn = get_mysql_conn()
+    cursor = conn.cursor(dictionary=True)
+    sql = """
+    SELECT device_mac as device, timestamp, role, content, meta_json
+    FROM chat_history
+    WHERE DATE(timestamp) = %s
+    ORDER BY timestamp ASC
+    """
+    cursor.execute(sql, (date_str,))
+    messages: List[Dict[str, Any]] = cursor.fetchall()  # type: ignore
     client = get_eloqkv_client()
     count = 0
     for msg in messages:
-        key = f"chat:{msg['device']}:{date_str}"
+        device = msg["device"]
+        key = f"chat:{device}:{date_str}"
         if not dry_run:
             client.rpush(key, msg)  # type: ignore[attr-defined]
         count += 1
@@ -211,32 +221,43 @@ def main() -> None:
     parser.add_argument("--since", help="增量迁移起始时间戳或日期", default=None)
     parser.add_argument("--chat-date", help="迁移指定日期的聊天分片 (YYYYMMDD)", default=None)
     parser.add_argument("--dry-run", action="store_true", help="仅打印数量，不写入 EloqKV")
+    parser.add_argument("--report", help="校验报告输出路径", default=None)
     args = parser.parse_args()
 
     dry_run = args.dry_run
+    report: List[Tuple[str, int]] = []
 
     if args.mode == "full":
-        migrate_users(dry_run=dry_run)
-        migrate_devices(dry_run=dry_run)
-        migrate_agents(dry_run=dry_run)
-        migrate_sessions(dry_run=dry_run)
-        migrate_models(dry_run=dry_run)
+        report.append(("users", len(migrate_users(dry_run=dry_run))))
+        report.append(("devices", len(migrate_devices(dry_run=dry_run))))
+        report.append(("agents", len(migrate_agents(dry_run=dry_run))))
+        report.append(("sessions", len(migrate_sessions(dry_run=dry_run))))
+        report.append(("models", len(migrate_models(dry_run=dry_run))))
         if args.chat_date:
-            migrate_chat_shard(args.chat_date, dry_run=dry_run)
+            count = migrate_chat_shard(args.chat_date, dry_run=dry_run)
+            report.append((f"chat:{args.chat_date}", count))
         else:
             print("⚠️  chat-date 未指定，聊天分片未迁移", file=sys.stderr)
     else:
-        migrate_users(since=args.since, dry_run=dry_run)
-        migrate_devices(since=args.since, dry_run=dry_run)
-        migrate_agents(since=args.since, dry_run=dry_run)
-        migrate_sessions(since=args.since, dry_run=dry_run)
-        migrate_models(since=args.since, dry_run=dry_run)
+        report.append(("users", len(migrate_users(since=args.since, dry_run=dry_run))))
+        report.append(("devices", len(migrate_devices(since=args.since, dry_run=dry_run))))
+        report.append(("agents", len(migrate_agents(since=args.since, dry_run=dry_run))))
+        report.append(("sessions", len(migrate_sessions(since=args.since, dry_run=dry_run))))
+        report.append(("models", len(migrate_models(since=args.since, dry_run=dry_run))))
         if args.chat_date:
-            migrate_chat_shard(args.chat_date, dry_run=dry_run)
+            count = migrate_chat_shard(args.chat_date, dry_run=dry_run)
+            report.append((f"chat:{args.chat_date}", count))
         else:
             print("⚠️  chat-date 未指定，聊天分片增量未迁移", file=sys.stderr)
 
     print("Migration skeleton completed (fill TODOs before production run).")
+    if args.report:
+        with open(args.report, "w", encoding="utf-8") as f:
+            for name, cnt in report:
+                f.write(f"{name},{cnt}\n")
+    else:
+        for name, cnt in report:
+            print(f"{name}: {cnt}")
 
 
 if __name__ == "__main__":
