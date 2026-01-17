@@ -15,6 +15,7 @@ EloqKV 迁移脚本骨架（目标存储为 KV/JSON，迁移后不再依赖 SQL 
 import argparse
 import hashlib
 import os
+import sys
 from urllib.parse import urlparse
 from typing import Any, Dict, List, Optional
 
@@ -202,6 +203,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="EloqKV migration (skeleton)")
     parser.add_argument("--mode", choices=["full", "incremental"], default="full")
     parser.add_argument("--since", help="增量迁移起始时间戳或日期", default=None)
+    parser.add_argument("--chat-date", help="迁移指定日期的聊天分片 (YYYYMMDD)", default=None)
+    parser.add_argument("--dry-run", action="store_true", help="仅打印数量，不写入 EloqKV")
     args = parser.parse_args()
 
     if args.mode == "full":
@@ -210,14 +213,20 @@ def main() -> None:
         migrate_agents()
         migrate_sessions()
         migrate_models()
-        # TODO: 聊天分片按日期循环
+        if args.chat_date:
+            migrate_chat_shard(args.chat_date)
+        else:
+            print("⚠️  chat-date 未指定，聊天分片未迁移", file=sys.stderr)
     else:
         migrate_users(since=args.since)
         migrate_devices(since=args.since)
         migrate_agents(since=args.since)
         migrate_sessions(since=args.since)
         migrate_models(since=args.since)
-        # TODO: 增量聊天分片
+        if args.chat_date:
+            migrate_chat_shard(args.chat_date)
+        else:
+            print("⚠️  chat-date 未指定，聊天分片增量未迁移", file=sys.stderr)
 
     print("Migration skeleton completed (fill TODOs before production run).")
 
