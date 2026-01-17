@@ -15,9 +15,10 @@ mojo/
     lib.mojo         # 导出 C ABI 接口
 ```
 
-FFI 约定（示例）：
-- `opus_decode(input_ptr: Pointer[UInt8], len: Int32, sample_rate: Int32, channels: Int32) -> Pointer[Int16]`
-- `pcm_to_float(input_ptr: Pointer[Int16], len: Int32) -> Pointer[Float32]`
-- `vad_energy(input_ptr: Pointer[Float32], len: Int32) -> Float32`
+FFI 约定（草案，C ABI）：
+- `int opus_decode(const uint8_t* in, int32_t in_len, int32_t sample_rate, int32_t channels, int16_t* out, int32_t out_len);` 返回写入的样本数或负值错误码。
+- `int pcm_to_float(const int16_t* in, int32_t len, float* out);` 返回写入元素数。
+- `float vad_energy(const float* in, int32_t len);` 返回能量值。
+- 错误码：0 或正值表示长度，负值表示失败（-1 decode error, -2 invalid arg）。
 
-Python 侧：使用 `ctypes`/`cffi` 调用，提供回退开关。
+Python 侧：使用 `ctypes`/`cffi`，需提供 out buffer 与检查返回值，失败回退到 Python 实现。
