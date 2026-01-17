@@ -10,7 +10,7 @@ use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
-use tracing::{info, Level};
+use tracing::{error, info, Level};
 
 #[derive(Serialize, Deserialize)]
 struct LoginRequest {
@@ -49,13 +49,16 @@ struct Agent {
     asr_model_id: Option<String>,
     vad_model_id: Option<String>,
     llm_model_id: Option<String>,
+    tts_model_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
-    // 根据实际 EloqKV 配置结构扩展
     ws_url: Option<String>,
     http_url: Option<String>,
+    tts_model_id: Option<String>,
+    asr_model_id: Option<String>,
+    llm_model_id: Option<String>,
     extra: Option<serde_json::Value>,
 }
 
@@ -89,6 +92,8 @@ async fn list_devices(State(state): State<AppState>) -> impl IntoResponse {
                 board: data.get("board").cloned(),
                 last_seen: data.get("last_seen").cloned(),
             });
+        } else {
+            error!("device key missing for mac {}", mac);
         }
     }
     Json(serde_json::json!({ "devices": devices })).into_response()
@@ -115,7 +120,10 @@ async fn get_device(State(state): State<AppState>, Path(mac): Path<String>) -> i
             };
             Json(device).into_response()
         }
-        _ => StatusCode::NOT_FOUND.into_response(),
+        _ => {
+            error!("device not found: {}", mac);
+            StatusCode::NOT_FOUND.into_response()
+        }
     }
 }
 
@@ -140,6 +148,7 @@ async fn get_agents(State(state): State<AppState>) -> impl IntoResponse {
                 asr_model_id: data.get("asr_model_id").cloned(),
                 vad_model_id: data.get("vad_model_id").cloned(),
                 llm_model_id: data.get("llm_model_id").cloned(),
+                tts_model_id: data.get("tts_model_id").cloned(),
             });
         }
     }
@@ -162,10 +171,14 @@ async fn get_agent(State(state): State<AppState>, Path(id): Path<String>) -> imp
                 asr_model_id: data.get("asr_model_id").cloned(),
                 vad_model_id: data.get("vad_model_id").cloned(),
                 llm_model_id: data.get("llm_model_id").cloned(),
+                tts_model_id: data.get("tts_model_id").cloned(),
             };
             Json(agent).into_response()
         }
-        _ => StatusCode::NOT_FOUND.into_response(),
+        _ => {
+            error!("agent not found: {}", id);
+            StatusCode::NOT_FOUND.into_response()
+        }
     }
 }
 
@@ -182,11 +195,17 @@ async fn get_config(State(state): State<AppState>) -> impl IntoResponse {
             let cfg = Config {
                 ws_url: data.get("ws_url").cloned(),
                 http_url: data.get("http_url").cloned(),
+                tts_model_id: data.get("tts_model_id").cloned(),
+                asr_model_id: data.get("asr_model_id").cloned(),
+                llm_model_id: data.get("llm_model_id").cloned(),
                 extra: None,
             };
             Json(cfg).into_response()
         }
-        _ => StatusCode::NOT_FOUND.into_response(),
+        _ => {
+            error!("config not found");
+            StatusCode::NOT_FOUND.into_response()
+        }
     }
 }
 

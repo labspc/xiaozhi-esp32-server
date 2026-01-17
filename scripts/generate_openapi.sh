@@ -125,7 +125,8 @@ cat > "$OUTPUT" <<'EOF'
           "name": { "type": "string", "nullable": true },
           "asr_model_id": { "type": "string", "nullable": true },
           "vad_model_id": { "type": "string", "nullable": true },
-          "llm_model_id": { "type": "string", "nullable": true }
+          "llm_model_id": { "type": "string", "nullable": true },
+          "tts_model_id": { "type": "string", "nullable": true }
         },
         "required": ["id"]
       },
@@ -134,6 +135,9 @@ cat > "$OUTPUT" <<'EOF'
         "properties": {
           "ws_url": { "type": "string", "nullable": true },
           "http_url": { "type": "string", "nullable": true },
+          "tts_model_id": { "type": "string", "nullable": true },
+          "asr_model_id": { "type": "string", "nullable": true },
+          "llm_model_id": { "type": "string", "nullable": true },
           "extra": { "type": "object", "nullable": true }
         }
       }
