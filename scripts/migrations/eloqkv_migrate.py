@@ -22,6 +22,20 @@ from typing import Any, Dict, List, Optional, Tuple
 MYSQL_DSN = os.getenv("MYSQL_DSN", "mysql://user:password@host:3306/db")
 ELOQKV_DSN = os.getenv("ELOQKV_DSN", "redis://host:6379")
 
+# 表名/字段可通过环境覆盖，便于适配实际 schema
+CHAT_TABLE = os.getenv("CHAT_TABLE", "chat_history")
+CHAT_DEVICE_FIELD = os.getenv("CHAT_DEVICE_FIELD", "device_mac")
+CHAT_TIME_FIELD = os.getenv("CHAT_TIME_FIELD", "timestamp")
+CHAT_ROLE_FIELD = os.getenv("CHAT_ROLE_FIELD", "role")
+CHAT_CONTENT_FIELD = os.getenv("CHAT_CONTENT_FIELD", "content")
+CHAT_META_FIELD = os.getenv("CHAT_META_FIELD", "meta_json")
+
+MODEL_TABLE = os.getenv("MODEL_TABLE", "ai_model_config")
+MODEL_TYPE_FIELD = os.getenv("MODEL_TYPE_FIELD", "model_type")
+MODEL_NAME_FIELD = os.getenv("MODEL_NAME_FIELD", "model_name")
+MODEL_CONFIG_FIELD = os.getenv("MODEL_CONFIG_FIELD", "config_json")
+MODEL_UPDATE_FIELD = os.getenv("MODEL_UPDATE_FIELD", "update_date")
+
 
 def get_mysql_conn():
     """
@@ -146,14 +160,17 @@ def migrate_chat_shard(date_str: str, dry_run: bool = False) -> Tuple[int, List[
     示例：迁移某日的聊天分片。
     返回迁移条数，用于统计。
     """
-    # TODO: 拉取 chat_history 按日期分片（按实际表字段调整）
     conn = get_mysql_conn()
     cursor = conn.cursor(dictionary=True)
-    sql = """
-    SELECT device_mac as device, timestamp, role, content, meta_json
-    FROM chat_history
-    WHERE DATE(timestamp) = %s
-    ORDER BY timestamp ASC
+    sql = f"""
+    SELECT {CHAT_DEVICE_FIELD} as device,
+           {CHAT_TIME_FIELD} as timestamp,
+           {CHAT_ROLE_FIELD} as role,
+           {CHAT_CONTENT_FIELD} as content,
+           {CHAT_META_FIELD} as meta_json
+    FROM {CHAT_TABLE}
+    WHERE DATE({CHAT_TIME_FIELD}) = %s
+    ORDER BY {CHAT_TIME_FIELD} ASC
     """
     cursor.execute(sql, (date_str,))
     messages: List[Dict[str, Any]] = cursor.fetchall()  # type: ignore
@@ -200,10 +217,10 @@ def migrate_models(since: Optional[str] = None, dry_run: bool = False) -> List[s
     """
     conn = get_mysql_conn()
     cursor = conn.cursor(dictionary=True)
-    sql = "SELECT id, model_type, model_name, config_json, update_date FROM ai_model_config"
+    sql = f"SELECT id, {MODEL_TYPE_FIELD} as model_type, {MODEL_NAME_FIELD} as model_name, {MODEL_CONFIG_FIELD} as config_json, {MODEL_UPDATE_FIELD} as update_date FROM {MODEL_TABLE}"
     params: tuple = ()
     if since:
-        sql += " WHERE update_date >= %s"
+        sql += f" WHERE {MODEL_UPDATE_FIELD} >= %s"
         params = (since,)
     cursor.execute(sql, params)
     rows: List[Dict[str, Any]] = cursor.fetchall()  # type: ignore
