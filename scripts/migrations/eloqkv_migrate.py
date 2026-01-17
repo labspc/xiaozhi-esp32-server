@@ -1,15 +1,5 @@
 """
-EloqKV 迁移脚本骨架（目标存储为 KV/JSON，迁移后不再依赖 SQL 查询）。
-
-目标：
-- 从现有 MySQL/Redis 导出数据（仅作为源），写入 EloqKV（兼容 redis 协议）
-- 支持全量与增量（基于时间戳/自增 id）
-- 输出校验报告（行数、哈希、抽样查询），并构建必要索引 Key
-
-注意：
-- 迁移完成后，服务仅依赖 EloqKV（KV/JSON），不再依赖 SQL 查询能力
-- 按 docs-refactor/ELOQKV_KEYS.md 的 Key 规范写入，构建索引 Key（用户名、设备索引等）
-- 按 MIGRATION_RUNBOOK 进行影子/增量/切换/回滚
+EloqKV 迁移脚本（KV/JSON 目标，迁移后不再依赖 SQL 查询）
 """
 
 import argparse
@@ -19,10 +9,11 @@ import sys
 from urllib.parse import urlparse
 from typing import Any, Dict, List, Optional, Tuple
 
+# 数据源与目标
 MYSQL_DSN = os.getenv("MYSQL_DSN", "mysql://user:password@host:3306/db")
 ELOQKV_DSN = os.getenv("ELOQKV_DSN", "redis://host:6379")
 
-# 表名/字段可通过环境覆盖，便于适配实际 schema
+# 可配置表/字段，便于适配实际 schema
 CHAT_TABLE = os.getenv("CHAT_TABLE", "chat_history")
 CHAT_DEVICE_FIELD = os.getenv("CHAT_DEVICE_FIELD", "device_mac")
 CHAT_TIME_FIELD = os.getenv("CHAT_TIME_FIELD", "timestamp")
@@ -38,16 +29,14 @@ MODEL_UPDATE_FIELD = os.getenv("MODEL_UPDATE_FIELD", "update_date")
 
 
 def get_mysql_conn():
-    """
-    返回 MySQL 连接；需要安装 mysql-connector-python 或 pymysql。
-    """
+    """返回 MySQL 连接；需要安装 mysql-connector-python。"""
     try:
         import mysql.connector  # type: ignore
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError("Please install mysql-connector-python") from exc
     parsed = urlparse(MYSQL_DSN)
     if not parsed.hostname or not parsed.path:
-        raise RuntimeError("MYSQL_DSN is invalid, expected mysql://user:password@host:port/db")
+        raise RuntimeError("MYSQL_DSN invalid, expected mysql://user:password@host:port/db")
     return mysql.connector.connect(
         host=parsed.hostname,
         port=parsed.port or 3306,
@@ -58,10 +47,7 @@ def get_mysql_conn():
 
 
 def get_eloqkv_client():
-    """
-    返回 EloqKV 客户端；服务端兼容 redis 协议。
-    生产服务建议用 redis-rs client；本迁移脚本示例使用 redis-py。
-    """
+    """返回 EloqKV 客户端；服务端兼容 redis 协议。"""
     try:
         import redis  # type: ignore
     except ImportError as exc:  # pragma: no cover
@@ -70,7 +56,6 @@ def get_eloqkv_client():
 
 
 def hash_dict(d: Dict[str, Any]) -> str:
-    """稳定哈希，用于迁移后校验."""
     m = hashlib.sha256()
     for k in sorted(d.keys()):
         m.update(str(k).encode())
@@ -78,19 +63,15 @@ def hash_dict(d: Dict[str, Any]) -> str:
     return m.hexdigest()
 
 
-def migrate_users(since: Optional[str] = None, dry_run: bool = False) -> List[str]:
-    """
-    迁移用户：写入 user:{id}，并可选建立用户名索引。
-    返回校验哈希列表。
-    """
+def migrate_users(since: Optional[str], dry_run: bool) -> List[str]:
     conn = get_mysql_conn()
     cursor = conn.cursor(dictionary=True)
     sql = "SELECT id, username, password, email, create_date as created_at, update_date as updated_at FROM sys_user"
+    params: Tuple[Any, ...] = ()
     if since:
         sql += " WHERE update_date >= %s"
-        cursor.execute(sql, (since,))
-    else:
-        cursor.execute(sql)
+        params = (since,)
+    cursor.execute(sql, params)
     rows: List[Dict[str, Any]] = cursor.fetchall()  # type: ignore
     client = get_eloqkv_client()
     hashes: List[str] = []
@@ -104,19 +85,15 @@ def migrate_users(since: Optional[str] = None, dry_run: bool = False) -> List[st
     return hashes
 
 
-def migrate_devices(since: Optional[str] = None, dry_run: bool = False) -> List[str]:
-    """
-    迁移设备：写入 device:{mac}，并建立用户到设备的索引。
-    返回校验哈希列表。
-    """
+def migrate_devices(since: Optional[str], dry_run: bool) -> List[str]:
     conn = get_mysql_conn()
     cursor = conn.cursor(dictionary=True)
     sql = "SELECT mac_address, user_id, agent_id, last_connected_at as last_seen, firmware_version, board, alias, update_date FROM ai_device"
+    params: Tuple[Any, ...] = ()
     if since:
         sql += " WHERE update_date >= %s"
-        cursor.execute(sql, (since,))
-    else:
-        cursor.execute(sql)
+        params = (since,)
+    cursor.execute(sql, params)
     rows: List[Dict[str, Any]] = cursor.fetchall()  # type: ignore
     client = get_eloqkv_client()
     hashes: List[str] = []
@@ -131,19 +108,18 @@ def migrate_devices(since: Optional[str] = None, dry_run: bool = False) -> List[
     return hashes
 
 
-def migrate_agents(since: Optional[str] = None, dry_run: bool = False) -> List[str]:
-    """迁移 agent 配置。"""
+def migrate_agents(since: Optional[str], dry_run: bool) -> List[str]:
     conn = get_mysql_conn()
     cursor = conn.cursor(dictionary=True)
     sql = """
     SELECT id, agent_name as name, asr_model_id, vad_model_id, llm_model_id, update_date
     FROM ai_agent
     """
+    params: Tuple[Any, ...] = ()
     if since:
         sql += " WHERE update_date >= %s"
-        cursor.execute(sql, (since,))
-    else:
-        cursor.execute(sql)
+        params = (since,)
+    cursor.execute(sql, params)
     rows: List[Dict[str, Any]] = cursor.fetchall()  # type: ignore
     client = get_eloqkv_client()
     hashes: List[str] = []
@@ -155,11 +131,47 @@ def migrate_agents(since: Optional[str] = None, dry_run: bool = False) -> List[s
     return hashes
 
 
-def migrate_chat_shard(date_str: str, dry_run: bool = False) -> Tuple[int, List[str]]:
-    """
-    示例：迁移某日的聊天分片。
-    返回迁移条数，用于统计。
-    """
+def migrate_sessions(since: Optional[str], dry_run: bool) -> List[str]:
+    conn = get_mysql_conn()
+    cursor = conn.cursor(dictionary=True)
+    sql = "SELECT user_id, token, expire_date as expire_at, update_date as updated_at FROM sys_user_token"
+    params: Tuple[Any, ...] = ()
+    if since:
+        sql += " WHERE update_date >= %s"
+        params = (since,)
+    cursor.execute(sql, params)
+    rows: List[Dict[str, Any]] = cursor.fetchall()  # type: ignore
+    client = get_eloqkv_client()
+    hashes: List[str] = []
+    for row in rows:
+        key = f"session:{row['token']}"
+        if not dry_run:
+            client.hset(key, mapping=row)  # type: ignore[attr-defined]
+        hashes.append(hash_dict(row))
+    return hashes
+
+
+def migrate_models(since: Optional[str], dry_run: bool) -> List[str]:
+    conn = get_mysql_conn()
+    cursor = conn.cursor(dictionary=True)
+    sql = f"SELECT id, {MODEL_TYPE_FIELD} as model_type, {MODEL_NAME_FIELD} as model_name, {MODEL_CONFIG_FIELD} as config_json, {MODEL_UPDATE_FIELD} as update_date FROM {MODEL_TABLE}"
+    params: Tuple[Any, ...] = ()
+    if since:
+        sql += f" WHERE {MODEL_UPDATE_FIELD} >= %s"
+        params = (since,)
+    cursor.execute(sql, params)
+    rows: List[Dict[str, Any]] = cursor.fetchall()  # type: ignore
+    client = get_eloqkv_client()
+    hashes: List[str] = []
+    for row in rows:
+        key = f"model:{row['model_type']}:{row['model_name']}"
+        if not dry_run:
+            client.hset(key, mapping=row)  # type: ignore[attr-defined]
+        hashes.append(hash_dict(row))
+    return hashes
+
+
+def migrate_chat_shard(date_str: str, dry_run: bool) -> Tuple[int, List[str]]:
     conn = get_mysql_conn()
     cursor = conn.cursor(dictionary=True)
     sql = f"""
@@ -187,53 +199,6 @@ def migrate_chat_shard(date_str: str, dry_run: bool = False) -> Tuple[int, List[
     return count, hashes
 
 
-def migrate_sessions(since: Optional[str] = None, dry_run: bool = False) -> List[str]:
-    """
-    迁移会话/token：写入 session:{token}。
-    注意：需要按实际表/字段调整查询。
-    """
-    conn = get_mysql_conn()
-    cursor = conn.cursor(dictionary=True)
-    sql = "SELECT user_id, token, expire_date as expire_at, update_date as updated_at FROM sys_user_token"
-    if since:
-        sql += " WHERE update_date >= %s"
-        cursor.execute(sql, (since,))
-    else:
-        cursor.execute(sql)
-    rows: List[Dict[str, Any]] = cursor.fetchall()  # type: ignore
-    client = get_eloqkv_client()
-    hashes: List[str] = []
-    for row in rows:
-        key = f"session:{row['token']}"
-        if not dry_run:
-            client.hset(key, mapping=row)  # type: ignore[attr-defined]
-        hashes.append(hash_dict(row))
-    return hashes
-
-
-def migrate_models(since: Optional[str] = None, dry_run: bool = False) -> List[str]:
-    """
-    迁移模型配置：按实际表/字段调整。
-    """
-    conn = get_mysql_conn()
-    cursor = conn.cursor(dictionary=True)
-    sql = f"SELECT id, {MODEL_TYPE_FIELD} as model_type, {MODEL_NAME_FIELD} as model_name, {MODEL_CONFIG_FIELD} as config_json, {MODEL_UPDATE_FIELD} as update_date FROM {MODEL_TABLE}"
-    params: tuple = ()
-    if since:
-        sql += f" WHERE {MODEL_UPDATE_FIELD} >= %s"
-        params = (since,)
-    cursor.execute(sql, params)
-    rows: List[Dict[str, Any]] = cursor.fetchall()  # type: ignore
-    client = get_eloqkv_client()
-    hashes: List[str] = []
-    for row in rows:
-        key = f"model:{row['model_type']}:{row['model_name']}"
-        if not dry_run:
-            client.hset(key, mapping=row)  # type: ignore[attr-defined]
-        hashes.append(hash_dict(row))
-    return hashes
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="EloqKV migration (skeleton)")
     parser.add_argument("--mode", choices=["full", "incremental"], default="full")
@@ -247,61 +212,35 @@ def main() -> None:
     dry_run = args.dry_run
     report: List[Tuple[str, int]] = []
     samples: List[Tuple[str, List[str]]] = []
+    since = args.since
 
-    if args.mode == "full":
-        hashes_users = migrate_users(dry_run=dry_run)
-        report.append(("users", len(hashes_users)))
-        samples.append(("users", hashes_users[: args.sample]))
+    # 全量或增量迁移
+    hashes_users = migrate_users(since, dry_run)
+    report.append(("users", len(hashes_users)))
+    samples.append(("users", hashes_users[: args.sample]))
 
-        hashes_devices = migrate_devices(dry_run=dry_run)
-        report.append(("devices", len(hashes_devices)))
-        samples.append(("devices", hashes_devices[: args.sample]))
+    hashes_devices = migrate_devices(since, dry_run)
+    report.append(("devices", len(hashes_devices)))
+    samples.append(("devices", hashes_devices[: args.sample]))
 
-        hashes_agents = migrate_agents(dry_run=dry_run)
-        report.append(("agents", len(hashes_agents)))
-        samples.append(("agents", hashes_agents[: args.sample]))
+    hashes_agents = migrate_agents(since, dry_run)
+    report.append(("agents", len(hashes_agents)))
+    samples.append(("agents", hashes_agents[: args.sample]))
 
-        hashes_sessions = migrate_sessions(dry_run=dry_run)
-        report.append(("sessions", len(hashes_sessions)))
-        samples.append(("sessions", hashes_sessions[: args.sample]))
+    hashes_sessions = migrate_sessions(since, dry_run)
+    report.append(("sessions", len(hashes_sessions)))
+    samples.append(("sessions", hashes_sessions[: args.sample]))
 
-        hashes_models = migrate_models(dry_run=dry_run)
-        report.append(("models", len(hashes_models)))
-        samples.append(("models", hashes_models[: args.sample]))
+    hashes_models = migrate_models(since, dry_run)
+    report.append(("models", len(hashes_models)))
+    samples.append(("models", hashes_models[: args.sample]))
 
-        if args.chat_date:
-            count, hash_chat = migrate_chat_shard(args.chat_date, dry_run=dry_run)
-            report.append((f"chat:{args.chat_date}", count))
-            samples.append((f"chat:{args.chat_date}", hash_chat[: args.sample]))
-        else:
-            print("⚠️  chat-date 未指定，聊天分片未迁移", file=sys.stderr)
+    if args.chat_date:
+        count, hash_chat = migrate_chat_shard(args.chat_date, dry_run=dry_run)
+        report.append((f"chat:{args.chat_date}", count))
+        samples.append((f"chat:{args.chat_date}", hash_chat[: args.sample]))
     else:
-        hashes_users = migrate_users(since=args.since, dry_run=dry_run)
-        report.append(("users", len(hashes_users)))
-        samples.append(("users", hashes_users[: args.sample]))
-
-        hashes_devices = migrate_devices(since=args.since, dry_run=dry_run)
-        report.append(("devices", len(hashes_devices)))
-        samples.append(("devices", hashes_devices[: args.sample]))
-
-        hashes_agents = migrate_agents(since=args.since, dry_run=dry_run)
-        report.append(("agents", len(hashes_agents)))
-        samples.append(("agents", hashes_agents[: args.sample]))
-
-        hashes_sessions = migrate_sessions(since=args.since, dry_run=dry_run)
-        report.append(("sessions", len(hashes_sessions)))
-        samples.append(("sessions", hashes_sessions[: args.sample]))
-
-        hashes_models = migrate_models(since=args.since, dry_run=dry_run)
-        report.append(("models", len(hashes_models)))
-        samples.append(("models", hashes_models[: args.sample]))
-
-        if args.chat_date:
-            count, hash_chat = migrate_chat_shard(args.chat_date, dry_run=dry_run)
-            report.append((f"chat:{args.chat_date}", count))
-            samples.append((f"chat:{args.chat_date}", hash_chat[: args.sample]))
-        else:
-            print("⚠️  chat-date 未指定，聊天分片增量未迁移", file=sys.stderr)
+        print("⚠️  chat-date 未指定，聊天分片未迁移", file=sys.stderr)
 
     print("Migration skeleton completed (fill TODOs before production run).")
     if args.report:
