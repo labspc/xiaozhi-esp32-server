@@ -23,28 +23,65 @@ BinaryResult = Union[bytes, Dict[str, Any], None]
 
 def handle_text(text: str) -> TextResult:
     """
-    文本处理示例：
+    文本处理：
     - 空文本返回错误
-    - 其他情况：模拟 LLM 回复
+    - 正常情况：调用 LLM，失败时返回 error
     """
     if not text.strip():
         return {"content": None, "error": "empty text"}
-
-    # TODO: 替换为真实 LLM/工具链调用
-    reply = f"[AI simulated reply] {text}"
-    return {"content": reply, "error": None}
+    try:
+        reply = run_llm(text)
+        return {"content": reply, "error": None}
+    except Exception as exc:  # noqa: BLE001
+        return {"content": None, "error": f"llm_error: {exc}"}
 
 
 def handle_binary(data: bytes, meta: Optional[dict] = None) -> BinaryResult:
     """
-    二进制/音频处理示例：
+    二进制/音频处理：
     - 空数据返回错误
-    - 读取 meta（如 sample_rate/format/session_id），可据此调用 ASR/TTS
-    - 当前逻辑只返回错误或原始数据
+    - meta 可包含 { "mode": "asr"|"tts", "sample_rate": int, "format": str, "session_id": str }
+    - 失败时返回 error
     """
     if not data:
         return {"data": None, "error": "empty binary"}
 
-    # TODO: 替换为真实音频处理：解码/识别/合成
-    _ = meta
-    return {"data": data, "error": None}
+    try:
+        mode = (meta or {}).get("mode", "asr")
+        if mode == "asr":
+            text = run_asr(data, meta or {})
+            return {"data": text.encode("utf-8"), "error": None}
+        if mode == "tts":
+            audio = run_tts((meta or {}).get("text", ""), meta or {})
+            return {"data": audio, "error": None}
+        return {"data": data, "error": None}
+    except Exception as exc:  # noqa: BLE001
+        return {"data": None, "error": f"binary_error: {exc}"}
+
+
+def run_llm(prompt: str) -> str:
+    """
+    TODO: 替换为真实 LLM 调用。
+    当前占位：返回简单回复。
+    """
+    if not prompt:
+        raise ValueError("empty prompt")
+    return f"[LLM reply] {prompt}"
+
+
+def run_asr(data: bytes, meta: Dict[str, Any]) -> str:
+    """
+    TODO: 替换为真实 ASR 调用。
+    当前占位：返回固定提示。
+    """
+    _ = (data, meta)
+    return "[ASR transcript placeholder]"
+
+
+def run_tts(text: str, meta: Dict[str, Any]) -> bytes:
+    """
+    TODO: 替换为真实 TTS 调用。
+    当前占位：返回空 bytes。
+    """
+    _ = (text, meta)
+    return b""
