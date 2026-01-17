@@ -34,7 +34,8 @@ def get_mysql_conn():
 
 def get_eloqkv_client():
     """
-    返回 EloqKV 客户端；兼容 redis 协议（可用 redis-rs/redis-py 服务端）。
+    返回 EloqKV 客户端；服务端兼容 redis 协议。
+    生产服务建议用 redis-rs client；本迁移脚本示例使用 redis-py。
     """
     try:
         import redis  # type: ignore

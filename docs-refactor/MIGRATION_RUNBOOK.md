@@ -2,6 +2,7 @@
 
 ## 前提
 - 确认 EloqKV 实例可用，连接串已在 `scripts/migrations/eloqkv_migrate.py` DSN 覆盖。
+- EloqKV 兼容 redis 协议：生产服务可用 redis-rs client；迁移脚本示例使用 redis-py。
 - MySQL/Redis 只读窗口已协商；影子阶段不改写源库。
 - 对照 `docs-refactor/ELOQKV_KEYS.md` 完成 Key 形态与索引确认。
 
