@@ -62,7 +62,7 @@ jobs:
             echo "No package.json, skipping JS lint"
           fi
 
-      - name: OpenAPI diff (placeholder)
+      - name: OpenAPI diff
         run: |
           set -e
           if [ -f scripts/generate_openapi.sh ]; then
