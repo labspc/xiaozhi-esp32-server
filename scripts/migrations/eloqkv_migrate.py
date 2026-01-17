@@ -15,6 +15,7 @@ EloqKV 迁移脚本骨架（目标存储为 KV/JSON，迁移后不再依赖 SQL 
 import argparse
 import hashlib
 import os
+from urllib.parse import urlparse
 from typing import Any, Dict, List, Optional
 
 MYSQL_DSN = os.getenv("MYSQL_DSN", "mysql://user:password@host:3306/db")
@@ -29,7 +30,16 @@ def get_mysql_conn():
         import mysql.connector  # type: ignore
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError("Please install mysql-connector-python") from exc
-    return mysql.connector.connect(option_files=None, option_groups=None, dsn=MYSQL_DSN)
+    parsed = urlparse(MYSQL_DSN)
+    if not parsed.hostname or not parsed.path:
+        raise RuntimeError("MYSQL_DSN is invalid, expected mysql://user:password@host:port/db")
+    return mysql.connector.connect(
+        host=parsed.hostname,
+        port=parsed.port or 3306,
+        user=parsed.username,
+        password=parsed.password,
+        database=parsed.path.lstrip("/"),
+    )
 
 
 def get_eloqkv_client():
@@ -143,6 +153,51 @@ def migrate_chat_shard(date_str: str) -> int:
     return count
 
 
+def migrate_sessions(since: Optional[str] = None) -> List[str]:
+    """
+    迁移会话/token：写入 session:{token}。
+    注意：需要按实际表/字段调整查询。
+    """
+    conn = get_mysql_conn()
+    cursor = conn.cursor(dictionary=True)
+    sql = "SELECT user_id, token, expire_date as expire_at, update_date as updated_at FROM sys_user_token"
+    if since:
+        sql += " WHERE update_date >= %s"
+        cursor.execute(sql, (since,))
+    else:
+        cursor.execute(sql)
+    rows: List[Dict[str, Any]] = cursor.fetchall()  # type: ignore
+    client = get_eloqkv_client()
+    hashes: List[str] = []
+    for row in rows:
+        key = f"session:{row['token']}"
+        client.hset(key, mapping=row)  # type: ignore[attr-defined]
+        hashes.append(hash_dict(row))
+    return hashes
+
+
+def migrate_models(since: Optional[str] = None) -> List[str]:
+    """
+    迁移模型配置：按实际表/字段调整。
+    """
+    conn = get_mysql_conn()
+    cursor = conn.cursor(dictionary=True)
+    sql = "SELECT id, model_type, model_name, config_json FROM ai_model_config"
+    params: tuple = ()
+    if since:
+        sql += " WHERE update_date >= %s"
+        params = (since,)
+    cursor.execute(sql, params)
+    rows: List[Dict[str, Any]] = cursor.fetchall()  # type: ignore
+    client = get_eloqkv_client()
+    hashes: List[str] = []
+    for row in rows:
+        key = f"model:{row['model_type']}:{row['model_name']}"
+        client.hset(key, mapping=row)  # type: ignore[attr-defined]
+        hashes.append(hash_dict(row))
+    return hashes
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="EloqKV migration (skeleton)")
     parser.add_argument("--mode", choices=["full", "incremental"], default="full")
@@ -153,11 +208,15 @@ def main() -> None:
         migrate_users()
         migrate_devices()
         migrate_agents()
-        # TODO: 增补会话/聊天分片
+        migrate_sessions()
+        migrate_models()
+        # TODO: 聊天分片按日期循环
     else:
         migrate_users(since=args.since)
         migrate_devices(since=args.since)
         migrate_agents(since=args.since)
+        migrate_sessions(since=args.since)
+        migrate_models(since=args.since)
         # TODO: 增量聊天分片
 
     print("Migration skeleton completed (fill TODOs before production run).")
