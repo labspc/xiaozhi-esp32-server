@@ -31,7 +31,7 @@
 
 ### 1.1 重构目标
 
-将 xiaozhi-esp32-server 从单体多语言项目改造为 **ORica Framework**（Open Rican AI Companion Hardware Community）—— 一个专注于 AI 陪伴硬件的垂直框架。
+将 xiaozhi-esp32-server 从单体多语言项目改造为 **ORica Framework**（OpenRica Community）—— 一个专注于 AI 陪伴硬件的垂直框架。
 
 ### 1.2 技术栈迁移路线
 
@@ -41,11 +41,27 @@
 ├─────────────────────────────────────────────────────────────────┤
 │  当前架构                          目标架构                       │
 │  ─────────                         ─────────                     │
-│  Python (xiaozhi-server)    →      Python (AI 逻辑层，保留)       │
-│                             →      Mojo (性能层，10-100x 加速)    │
-│  Java (manager-api)         →      Rust + Axum (基础设施层)       │
+│                                                                  │
+│  Python (xiaozhi-server)                                         │
+│    ├─ WebSocket 服务器      →      Rust (基础设施层)              │
+│    ├─ HTTP 服务器           →      Rust + Axum                   │
+│    ├─ AI 逻辑处理           →      Python (只做 AI 逻辑层)        │
+│    └─ 音频编解码            →      Mojo (性能层，10-100x 加速)    │
+│                                                                  │
+│  Java (manager-api)                                              │
+│    ├─ REST API              →      Rust + Axum                   │
+│    ├─ 权限管理              →      Rust + JWT                    │
+│    └─ 数据库操作            →      Rust + EloqKV                 │
+│                                                                  │
 │  Vue2 (manager-web)         →      Svelte + SvelteKit (前端层)   │
 │  MySQL + Redis              →      EloqKV (统一存储)              │
+│                                                                  │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │
+│  关键变化：                                                       │
+│  • Rust 接管所有网络通信（WebSocket、HTTP）                       │
+│  • Python 只做 AI 逻辑（Provider调度、对话管理、插件执行）        │
+│  • Rust 通过 PyO3 调用 Python 进行 AI 处理                       │
+│  • Mojo 加速音频处理（Opus编解码、VAD特征提取）                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -151,23 +167,37 @@ xiaozhi-esp32-server/
                                  │ WebSocket (二进制音频 + JSON控制)
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ Layer 4: Application Layer (用户扩展区)                          │
-│ ─────────────────────────────────────                           │
-│ 自定义 Providers / Plugins / Handlers                           │
-│ 职责：用户自定义逻辑、特定场景适配                                │
+│ Layer 1: Infrastructure Layer (Rust + Axum) ⭐ 网络入口          │
+│ ─────────────────────────────────────────                       │
+│ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌────────────┐ │
+│ │  WebSocket  │ │  Config API │ │   EloqKV    │ │   Device   │ │
+│ │   Server    │ │  (RESTful)  │ │   Storage   │ │   Manager  │ │
+│ └─────────────┘ └─────────────┘ └─────────────┘ └────────────┘ │
+│ 职责：                                                           │
+│   • 接收所有网络连接（WebSocket、HTTP）                          │
+│   • 管理设备连接生命周期、心跳检测                                │
+│   • 提供 RESTful API（用户认证、设备管理、配置管理）             │
+│   • 数据持久化（EloqKV 存储）                                    │
+│   • 通过 PyO3 调用 Python AI 逻辑层                              │
 └────────────────────────────────┬────────────────────────────────┘
-                                 │ Python API
+                                 │ PyO3 / FFI 调用
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ Layer 3: AI Logic Layer (Python) ⭐ 核心层                       │
+│ Layer 3: AI Logic Layer (Python) ⭐ 核心业务逻辑                  │
 │ ─────────────────────────────────────                           │
 │ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌────────────┐ │
-│ │  Provider   │ │   Plugin    │ │  Dialogue   │ │ Connection │ │
-│ │   System    │ │  Framework  │ │   Manager   │ │  Handler   │ │
+│ │  Provider   │ │   Plugin    │ │  Dialogue   │ │   Memory   │ │
+│ │   System    │ │  Framework  │ │   Manager   │ │   System   │ │
+│ │ ASR/TTS/LLM │ │ (工具调用)  │ │ (对话编排)  │ │ (上下文)   │ │
 │ └─────────────┘ └─────────────┘ └─────────────┘ └────────────┘ │
-│ 职责：AI 逻辑编排、对话管理、插件调度                             │
+│ 职责：                                                           │
+│   • AI 服务调度（ASR 识别、LLM 推理、TTS 合成）                  │
+│   • 对话状态管理、多轮对话上下文                                  │
+│   • 插件/Function Calling 执行                                   │
+│   • 记忆系统（短期/长期记忆）                                    │
+│   • ⚠️ 不处理网络连接，只接收处理请求，返回结果                  │
 └────────────────────────────────┬────────────────────────────────┘
-                                 │ FFI (ctypes / PyO3)
+                                 │ ctypes / FFI 调用
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ Layer 2: Performance Layer (Mojo)                               │
@@ -176,20 +206,17 @@ xiaozhi-esp32-server/
 │ │    Opus     │ │     PCM     │ │     VAD     │ │    SIMD    │ │
 │ │  Codec      │ │   Convert   │ │   Feature   │ │   Accel    │ │
 │ └─────────────┘ └─────────────┘ └─────────────┘ └────────────┘ │
-│ 职责：音频编解码、特征提取、SIMD 加速                             │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │ gRPC / HTTP (内部通信)
+│ 职责：音频编解码、特征提取、SIMD 加速（10-100x 性能提升）        │
+└─────────────────────────────────────────────────────────────────┘
+                                 │
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ Layer 1: Infrastructure Layer (Rust + Axum)                     │
-│ ─────────────────────────────────────────                       │
-│ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌────────────┐ │
-│ │  WebSocket  │ │  Config API │ │   EloqKV    │ │   Device   │ │
-│ │   Server    │ │  (RESTful)  │ │   Storage   │ │   Manager  │ │
-│ └─────────────┘ └─────────────┘ └─────────────┘ └────────────┘ │
-│ 职责：网络通信、配置管理、数据存储、设备管理                       │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │ HTTP (API)
+│ Layer 4: Application Layer (用户扩展区)                          │
+│ ─────────────────────────────────────                           │
+│ 自定义 Providers / Plugins / Handlers                           │
+│ 职责：用户自定义逻辑、特定场景适配、第三方集成                    │
+└─────────────────────────────────────────────────────────────────┘
+                                 │
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ Layer 0: Frontend Layer (Svelte + SvelteKit)                    │
@@ -202,16 +229,81 @@ xiaozhi-esp32-server/
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.2 各层职责清单
+### 3.2 核心调用流程
+
+```
+                    ESP32 设备发送音频
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                  Rust WebSocket Server                            │
+│  1. 接收 WebSocket 连接                                           │
+│  2. 接收 Opus 音频数据                                            │
+│  3. 调用 Mojo 解码音频                                            │
+│  4. 通过 PyO3 调用 Python AI 逻辑                                 │
+└──────────────────────────┬───────────────────────────────────────┘
+                           │ PyO3
+                           ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                  Python AI Logic Layer                            │
+│  5. VAD 检测（是否有语音）                                        │
+│  6. ASR 识别（语音转文字）                                        │
+│  7. LLM 推理（生成回复）                                          │
+│  8. TTS 合成（文字转语音）                                        │
+│  9. 返回结果给 Rust                                               │
+└──────────────────────────┬───────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                  Rust WebSocket Server                            │
+│  10. 调用 Mojo 编码音频                                           │
+│  11. 通过 WebSocket 发送给 ESP32                                  │
+│  12. 上报聊天记录到 EloqKV                                        │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### 3.3 各层职责清单
 
 | 层级 | 技术栈 | 职责 | 锁定/开放 |
 |------|--------|------|-----------|
-| Layer 5 | ESP32/C | 硬件交互 | 开放（用户定制固件） |
-| Layer 4 | Python | 用户扩展 | **开放**（用户自由扩展） |
-| Layer 3 | Python | AI 逻辑 | **锁定**（框架核心） |
-| Layer 2 | Mojo | 性能加速 | **锁定**（框架核心） |
-| Layer 1 | Rust/Axum | 基础设施 | **锁定**（框架核心） |
+| Layer 5 | ESP32/C | 硬件交互、音频采集播放 | 开放（用户定制固件） |
+| **Layer 1** | **Rust/Axum** | **所有网络通信（WebSocket、HTTP）、存储、设备管理** | **锁定**（框架核心） |
+| **Layer 3** | **Python** | **AI 逻辑（ASR/TTS/LLM 调度、对话管理、插件执行）** | **锁定**（框架核心） |
+| Layer 2 | Mojo | 性能加速（音频编解码、VAD 特征） | **锁定**（框架核心） |
+| Layer 4 | Python | 用户扩展（自定义 Provider、Plugin） | **开放**（用户自由扩展） |
 | Layer 0 | Svelte | 前端界面 | 半开放（可主题定制） |
+
+### 3.4 关键职责边界
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        职责边界说明                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ✅ Rust 负责（基础设施层）：                                    │
+│     • WebSocket 服务器（设备连接、心跳、断线重连）               │
+│     • HTTP RESTful API（用户认证、设备管理、配置管理）           │
+│     • 数据存储（EloqKV 读写）                                    │
+│     • 设备管理（注册、绑定、OTA）                                │
+│     • 通过 PyO3 嵌入 Python 解释器                               │
+│     • 调用 Mojo 进行音频编解码                                   │
+│                                                                  │
+│  ✅ Python 负责（AI 逻辑层）：                                   │
+│     • Provider 调度（ASR、TTS、LLM、VAD、Memory）                │
+│     • 对话状态管理（历史记录、上下文）                           │
+│     • 插件执行（Function Calling）                               │
+│     • AI 模型调用（本地模型 / 云端 API）                         │
+│     • ⚠️ 不处理任何网络连接                                     │
+│     • ⚠️ 只接收 Rust 传来的请求，返回处理结果                   │
+│                                                                  │
+│  ✅ Mojo 负责（性能层）：                                        │
+│     • Opus 编解码（FFI 调用 libopus）                            │
+│     • PCM 格式转换（SIMD 加速）                                  │
+│     • VAD 特征提取（MFCC、能量计算）                             │
+│     • 数值计算加速（10-100x 性能提升）                           │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -545,31 +637,39 @@ if __name__ == "__main__":
 
 ---
 
-## 7. Phase 2: Java → Rust (Axum) 迁移
+## 7. Phase 2: Java + Python网络层 → Rust (Axum) 迁移
+
+> **重要**：此阶段不仅迁移 Java manager-api，还包括将 Python xiaozhi-server 中的网络通信层（WebSocket、HTTP）迁移到 Rust。
 
 ### 7.1 模块迁移清单
 
 按优先级排序：
 
-| 优先级 | Java 模块 | Rust 模块 | 复杂度 | 依赖 |
-|--------|-----------|-----------|--------|------|
-| 1 | security (认证) | orica-auth | ⭐⭐⭐ | EloqKV |
-| 2 | device (设备管理) | orica-device | ⭐⭐ | orica-auth |
-| 3 | agent (Agent配置) | orica-agent | ⭐⭐ | orica-auth |
-| 4 | model (模型配置) | orica-model | ⭐⭐ | orica-auth |
-| 5 | user (用户管理) | orica-user | ⭐⭐ | orica-auth |
-| 6 | chat (聊天记录) | orica-chat | ⭐⭐⭐ | orica-auth |
-| 7 | statistics (统计) | orica-stats | ⭐⭐⭐⭐ | orica-chat |
+| 优先级 | 来源 | Rust 模块 | 复杂度 | 依赖 | 说明 |
+|--------|------|-----------|--------|------|------|
+| **1** | **Python** | **orica-websocket** | ⭐⭐⭐⭐ | EloqKV, PyO3 | **WebSocket 服务器（从 Python 迁移）** |
+| **2** | **Python** | **orica-pyo3-bridge** | ⭐⭐⭐ | - | **PyO3 Python 调用桥接** |
+| 3 | Java | orica-auth | ⭐⭐⭐ | EloqKV | 认证模块 |
+| 4 | Java | orica-device | ⭐⭐ | orica-auth | 设备管理 |
+| 5 | Java | orica-agent | ⭐⭐ | orica-auth | Agent 配置 |
+| 6 | Java | orica-model | ⭐⭐ | orica-auth | 模型配置 |
+| 7 | Java | orica-user | ⭐⭐ | orica-auth | 用户管理 |
+| 8 | Java | orica-chat | ⭐⭐⭐ | orica-auth | 聊天记录 |
+| 9 | Java | orica-stats | ⭐⭐⭐⭐ | orica-chat | 统计分析 |
 
-### 7.2 Axum 项目结构
+### 7.2 Rust 统一服务器架构
 
 ```rust
-// orica-api/src/main.rs
+// orica-server/src/main.rs
 use axum::{Router, routing::{get, post, put, delete}};
+use axum::extract::ws::WebSocketUpgrade;
 use tower_http::cors::CorsLayer;
+use pyo3::prelude::*;
 
 mod handlers;
 mod middleware;
+mod websocket;
+mod python_bridge;
 mod error;
 
 #[tokio::main]
@@ -577,11 +677,25 @@ async fn main() {
     // 初始化日志
     tracing_subscriber::init();
 
+    // 初始化 Python 解释器（PyO3）
+    pyo3::prepare_freethreaded_python();
+
     // 初始化存储
     let storage = EloqKVStorage::new("redis://localhost:6379").await;
 
+    // 初始化 Python AI 引擎
+    let ai_engine = python_bridge::AIEngine::new().expect("Failed to init Python AI engine");
+
     // 构建路由
     let app = Router::new()
+        // ===============================
+        // WebSocket 路由（设备连接）
+        // ===============================
+        .route("/xiaozhi/v1/", get(websocket::handler))
+
+        // ===============================
+        // RESTful API 路由
+        // ===============================
         // 认证路由
         .route("/api/auth/login", post(handlers::auth::login))
         .route("/api/auth/logout", post(handlers::auth::logout))
@@ -616,18 +730,199 @@ async fn main() {
         .layer(CorsLayer::permissive())
 
         // 共享状态
-        .with_state(AppState { storage });
+        .with_state(AppState { storage, ai_engine });
 
-    // 启动服务器
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8002").await.unwrap();
-    println!("Server running on http://0.0.0.0:8002");
+    // 启动统一服务器（WebSocket + HTTP）
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
+    println!("ORica Server running on http://0.0.0.0:8000");
+    println!("  WebSocket: ws://0.0.0.0:8000/xiaozhi/v1/");
+    println!("  REST API:  http://0.0.0.0:8000/api/");
     axum::serve(listener, app).await.unwrap();
 }
 ```
 
-### 7.3 核心模块实现
+### 7.3 WebSocket 服务器实现（关键模块）
 
-#### 7.3.1 认证模块 (JWT 替代 Shiro)
+```rust
+// orica-server/src/websocket/handler.rs
+use axum::{
+    extract::{ws::{Message, WebSocket, WebSocketUpgrade}, State},
+    response::IntoResponse,
+};
+use futures::{SinkExt, StreamExt};
+use tokio::sync::mpsc;
+
+/// WebSocket 连接处理器
+pub async fn handler(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    ws.on_upgrade(|socket| handle_connection(socket, state))
+}
+
+/// 处理单个 WebSocket 连接
+async fn handle_connection(socket: WebSocket, state: AppState) {
+    let (mut sender, mut receiver) = socket.split();
+    let (tx, mut rx) = mpsc::channel::<Message>(32);
+
+    // 会话 ID
+    let session_id = uuid::Uuid::new_v4().to_string();
+
+    // 发送任务
+    let send_task = tokio::spawn(async move {
+        while let Some(msg) = rx.recv().await {
+            if sender.send(msg).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    // 接收任务
+    let recv_task = tokio::spawn(async move {
+        while let Some(Ok(msg)) = receiver.next().await {
+            match msg {
+                Message::Binary(data) => {
+                    // 音频数据 - 调用 Python AI 逻辑处理
+                    let result = process_audio(&state, &session_id, &data).await;
+                    if let Some(response) = result {
+                        let _ = tx.send(response).await;
+                    }
+                }
+                Message::Text(text) => {
+                    // JSON 控制消息
+                    let result = process_control(&state, &session_id, &text).await;
+                    if let Some(response) = result {
+                        let _ = tx.send(response).await;
+                    }
+                }
+                Message::Close(_) => break,
+                _ => {}
+            }
+        }
+    });
+
+    // 等待任务完成
+    tokio::select! {
+        _ = send_task => {},
+        _ = recv_task => {},
+    }
+}
+
+/// 处理音频数据 - 调用 Python AI 逻辑
+async fn process_audio(
+    state: &AppState,
+    session_id: &str,
+    audio_data: &[u8],
+) -> Option<Message> {
+    // 1. 调用 Mojo 解码 Opus 音频
+    let pcm_data = mojo_bridge::decode_opus(audio_data);
+
+    // 2. 通过 PyO3 调用 Python AI 逻辑
+    let result = Python::with_gil(|py| {
+        let ai_engine = state.ai_engine.as_ref(py);
+        ai_engine.call_method1("process_audio", (session_id, &pcm_data[..]))
+    });
+
+    match result {
+        Ok(response) => {
+            // 3. 如果有 TTS 音频响应，编码并返回
+            if let Some(tts_audio) = response.get("audio") {
+                let opus_data = mojo_bridge::encode_opus(tts_audio);
+                Some(Message::Binary(opus_data))
+            } else {
+                None
+            }
+        }
+        Err(e) => {
+            tracing::error!("Python AI error: {}", e);
+            None
+        }
+    }
+}
+```
+
+### 7.4 PyO3 Python 桥接模块
+
+```rust
+// orica-server/src/python_bridge/mod.rs
+use pyo3::prelude::*;
+use pyo3::types::{PyDict, PyBytes};
+
+/// Python AI 引擎封装
+pub struct AIEngine {
+    module: Py<PyModule>,
+}
+
+impl AIEngine {
+    /// 初始化 Python AI 引擎
+    pub fn new() -> PyResult<Self> {
+        Python::with_gil(|py| {
+            // 导入 Python AI 模块
+            let module = PyModule::import(py, "orica.ai_engine")?;
+            Ok(Self {
+                module: module.into(),
+            })
+        })
+    }
+
+    /// 处理音频数据
+    pub fn process_audio(
+        &self,
+        py: Python,
+        session_id: &str,
+        audio_data: &[u8],
+    ) -> PyResult<Py<PyDict>> {
+        let module = self.module.as_ref(py);
+        let result = module.call_method1(
+            "process_audio",
+            (session_id, PyBytes::new(py, audio_data)),
+        )?;
+        Ok(result.extract()?)
+    }
+
+    /// 处理文本消息（意图识别）
+    pub fn process_text(
+        &self,
+        py: Python,
+        session_id: &str,
+        text: &str,
+    ) -> PyResult<Py<PyDict>> {
+        let module = self.module.as_ref(py);
+        let result = module.call_method1(
+            "process_text",
+            (session_id, text),
+        )?;
+        Ok(result.extract()?)
+    }
+
+    /// 设置会话配置
+    pub fn set_config(
+        &self,
+        py: Python,
+        session_id: &str,
+        config: &str,  // JSON 字符串
+    ) -> PyResult<()> {
+        let module = self.module.as_ref(py);
+        module.call_method1("set_config", (session_id, config))?;
+        Ok(())
+    }
+
+    /// 清理会话
+    pub fn cleanup_session(
+        &self,
+        py: Python,
+        session_id: &str,
+    ) -> PyResult<()> {
+        let module = self.module.as_ref(py);
+        module.call_method1("cleanup_session", (session_id,))?;
+        Ok(())
+    }
+}
+```
+
+### 7.5 核心模块实现
+
+#### 7.5.1 认证模块 (JWT 替代 Shiro)
 
 ```rust
 // orica-api/src/handlers/auth.rs
