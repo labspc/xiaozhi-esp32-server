@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONWARNINGS: ignore
+      OPENAPI_OUTPUT: openapi.json
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,19 +48,35 @@ jobs:
             echo "No Cargo.toml, skipping Rust checks"
           fi
 
-      - name: Node lint placeholder (Svelte/Vue)
+      - name: Node lint (if package.json exists)
         run: |
           set -e
           if [ -f package.json ]; then
             npm install --prefer-offline --no-progress
-            npm run lint || echo "lint script missing, skipping"
+            if npm run lint; then
+              echo "JS lint passed"
+            else
+              echo "JS lint failed or missing"; exit 1;
+            fi
           else
             echo "No package.json, skipping JS lint"
           fi
 
-      - name: OpenAPI contract placeholder
+      - name: OpenAPI diff (placeholder)
         run: |
-          echo "TODO: add OpenAPI generation and diff per CI_GUARDRAILS.md"
+          set -e
+          if [ -f scripts/generate_openapi.sh ]; then
+            bash scripts/generate_openapi.sh > $OPENAPI_OUTPUT
+            if [ -f openapi-baseline.json ]; then
+              if ! diff -u openapi-baseline.json $OPENAPI_OUTPUT; then
+                echo "OpenAPI diff detected"; exit 1;
+              fi
+            else
+              echo "Baseline OpenAPI not found; skipping diff"
+            fi
+          else
+            echo "OpenAPI generator script missing; skipping"
+          fi
 
       - name: Forbidden patterns scan (baseline)
         run: |
@@ -71,15 +88,12 @@ jobs:
             if rg "<[A-Za-z0-9_]+>" src; then echo "Found generics-like pattern"; exit 1; fi
             if rg "\|" src; then echo "Found possible closures"; exit 1; fi
           fi
-          # Svelte: block context/actions/derived
+          # Svelte/Vue: block context/actions/derived/composition API if not desired
           if [ -d web ] || [ -d main/manager-web ] || [ -d main/manager-mobile ]; then
             if rg "setContext|getContext|use:" .; then echo "Found forbidden Svelte/Vue actions/context"; exit 1; fi
             if rg "derived" .; then echo "Found forbidden derived stores"; exit 1; fi
+            if rg "defineComponent" main/manager-web; then echo "Found Vue composition patterns"; exit 1; fi
           fi
           # Python: discourage eval/exec
           if rg "eval\(" main/xiaozhi-server; then echo "Found eval in Python"; exit 1; fi
           if rg "exec\(" main/xiaozhi-server; then echo "Found exec in Python"; exit 1; fi
-
-      - name: TODO OpenAPI diff
-        run: |
-          echo "OpenAPI diff not yet implemented"
