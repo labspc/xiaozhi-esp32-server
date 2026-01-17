@@ -195,19 +195,26 @@ async fn websocket_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
 }
 
 async fn handle_socket(mut stream: axum::extract::ws::WebSocket) {
-    // 简单回显并调用 Python 处理文本消息；遵守简单控制流
     while let Some(Ok(msg)) = stream.recv().await {
         match msg {
             axum::extract::ws::Message::Text(text) => {
-                if let Err(err) = call_python_process(&text) {
-                    tracing::error!("python process error: {:?}", err);
-                }
-                if stream.send(axum::extract::ws::Message::Text(text)).await.is_err() {
-                    break;
+                let result = call_python_text(&text);
+                if let Err(err) = result {
+                    tracing::error!("python text error: {:?}", err);
+                } else if let Ok(output) = result {
+                    if stream
+                        .send(axum::extract::ws::Message::Text(output.unwrap_or(text)))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
                 }
             }
-            axum::extract::ws::Message::Binary(_bin) => {
-                // TODO: 结合音频帧处理
+            axum::extract::ws::Message::Binary(bin) => {
+                if let Err(err) = call_python_binary(&bin) {
+                    tracing::error!("python binary error: {:?}", err);
+                }
             }
             axum::extract::ws::Message::Close(_) => break,
             _ => {}
@@ -215,12 +222,24 @@ async fn handle_socket(mut stream: axum::extract::ws::WebSocket) {
     }
 }
 
-fn call_python_process(text: &str) -> PyResult<()> {
+fn call_python_text(text: &str) -> PyResult<Option<String>> {
     Python::with_gil(|py| {
-        let builtins = py.import_bound("builtins")?;
-        let print = builtins.getattr("print")?;
-        // TODO: 替换为实际 AI 处理函数
-        print.call1((format!("recv: {}", text),))?;
+        let module = PyModule::import_bound(py, "py_ai_handler")?;
+        let func = module.getattr("handle_text")?;
+        let res = func.call1((text,))?;
+        if res.is_none() {
+            Ok(None)
+        } else {
+            Ok(Some(res.extract::<String>()?))
+        }
+    })
+}
+
+fn call_python_binary(bin: &[u8]) -> PyResult<()> {
+    Python::with_gil(|py| {
+        let module = PyModule::import_bound(py, "py_ai_handler")?;
+        let func = module.getattr("handle_binary")?;
+        func.call1((bin,))?;
         Ok(())
     })
 }
