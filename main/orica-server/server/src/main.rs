@@ -6,7 +6,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use pyo3::prelude::*;
+use pyo3::{prelude::*, types::PyDict};
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -271,8 +271,20 @@ async fn handle_socket(mut stream: axum::extract::ws::WebSocket) {
                 }
             }
             axum::extract::ws::Message::Binary(bin) => {
-                if let Err(err) = call_python_binary(&bin) {
-                    error!("python binary error: {:?}", err);
+                match call_python_binary(&bin, None) {
+                    Ok(Some(out)) => {
+                        if stream
+                            .send(axum::extract::ws::Message::Binary(out))
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(err) => {
+                        error!("python binary error: {:?}", err);
+                    }
                 }
             }
             axum::extract::ws::Message::Close(_) => break,
@@ -294,12 +306,27 @@ fn call_python_text(text: &str) -> PyResult<Option<String>> {
     })
 }
 
-fn call_python_binary(bin: &[u8]) -> PyResult<()> {
+fn call_python_binary(bin: &[u8], meta: Option<&serde_json::Value>) -> PyResult<Option<Vec<u8>>> {
     Python::with_gil(|py| {
         let module = PyModule::import_bound(py, "py_ai_handler")?;
         let func = module.getattr("handle_binary")?;
-        func.call1((bin,))?;
-        Ok(())
+        let res = match meta {
+            Some(m) => {
+                let dict = PyDict::new_bound(py);
+                if let Some(obj) = m.as_object() {
+                    for (k, v) in obj {
+                        dict.set_item(k, serde_json::to_string(v).unwrap_or_default())?;
+                    }
+                }
+                func.call1((bin, dict))?
+            }
+            None => func.call1((bin,))?,
+        };
+        if res.is_none() {
+            Ok(None)
+        } else {
+            Ok(Some(res.extract::<Vec<u8>>()?))
+        }
     })
 }
 
