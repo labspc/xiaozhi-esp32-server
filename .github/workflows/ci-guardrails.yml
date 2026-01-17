@@ -79,3 +79,7 @@ jobs:
           # Python: discourage eval/exec
           if rg "eval\(" main/xiaozhi-server; then echo "Found eval in Python"; exit 1; fi
           if rg "exec\(" main/xiaozhi-server; then echo "Found exec in Python"; exit 1; fi
+
+      - name: TODO OpenAPI diff
+        run: |
+          echo "OpenAPI diff not yet implemented"
