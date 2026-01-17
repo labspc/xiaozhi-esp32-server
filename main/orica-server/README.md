@@ -15,7 +15,10 @@
 - `KEY_CONFIG` (default `config:global`)
 
 ## Python Handler
-- `main/orica-server/py_ai_handler.py` with `handle_text(text)->str|None`, `handle_binary(bytes)->None`; replace with real AI logic.
+- `main/orica-server/py_ai_handler.py`
+  - `handle_text(text)->str|None`: 返回字符串则替换回复，返回 None 回显原文
+  - `handle_binary(bytes)->None`: 占位处理二进制/音频
+  - 需替换为真实 AI 逻辑并定义协议（文本/二进制 payload）
 
 ## OpenAPI
 - Stub generator: `scripts/generate_openapi.sh`
@@ -28,5 +31,5 @@ cargo check
 ```
 
 ## Notes
-- Auth is stubbed; replace with real JWT.
+- Auth/JWT 为占位，需替换为真实校验/签发。
 - Redis key naming aligns with `docs-refactor/ELOQKV_KEYS.md` (configurable via env).
