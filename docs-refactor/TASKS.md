@@ -5,7 +5,7 @@
 | ID | Phase | 任务 | 分支 | 负责人 | 状态 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- |
 | P0-BASE | 0 基础设施 | CI 运行 lint/build，接入规范检查脚本（禁用闭包/泛型等）；监控脚手架 | feat/p0-ci-guardrails | Codex | 进行中 | `ci-guardrails.yml` 已添加初版 |
-| P1-STORAGE | 1 存储迁移 | EloqKV 影子迁移 + 校验脚本（全量/增量/比对）；回滚脚本 | feat/p1-storage-eloqkv-migrate | 待指派 | 待启动 | 依赖：EloqKV 实例可用 |
+| P1-STORAGE | 1 存储迁移 | EloqKV 影子迁移 + 校验脚本（全量/增量/比对）；回滚脚本 | feat/p1-storage-eloqkv-migrate | 待指派 | 待启动 | 依赖：EloqKV 实例可用；`ELOQKV_KEYS`、迁移骨架已备 |
 | P2-RUST-WS | 2 Rust 迁移 | Axum WebSocket/HTTP 兼容旧路径 `/xiaozhi/*` + 新 `/orica/*`；PyO3 桥 | feat/p2-axum-ws-api | 待指派 | 待启动 | 依赖：P1 抽象；遵守 `AXUM_SIMPLE_GUIDE` |
 | P3-MOJO | 3 性能 | Mojo Opus/PCM/VAD 批处理 + Python FFI 可回退 | feat/p3-mojo-audio | 待指派 | 待启动 | 依赖：P2 稳定接口 |
 | P4-FE | 4 前端 | SvelteKit + shadcn-svelte 基架；认证/路由/国际化 MVP | feat/p4-svelte-mvp | 待指派 | 待启动 | 依赖：`v2orica` API 契约 |
