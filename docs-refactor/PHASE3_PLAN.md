@@ -11,4 +11,5 @@
 4) 基准测试：延迟/吞吐对比，更新文档。
 
 ## 状态
-- 未实现，目录与 README 占位已创建（`main/xiaozhi-server/mojo/`）。
+- Rust 占位 FFI 已实现并可编译链接系统 `libopus`（`main/xiaozhi-server/mojo/`），导出 `opus_decode`/`pcm_to_float`/`vad_energy`。
+- 后续需替换为 Mojo 实现、完善 Python FFI 封装与基准。
