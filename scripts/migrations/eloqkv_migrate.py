@@ -14,21 +14,28 @@ EloqKV 迁移脚本骨架
 
 import argparse
 import hashlib
-from typing import Any, Dict, List
+import os
+from typing import Any, Dict, List, Optional
 
-MYSQL_DSN = "mysql://user:password@host:3306/db"  # TODO: 覆盖
-ELOQKV_DSN = "redis://host:6379"  # TODO: 覆盖
+MYSQL_DSN = os.getenv("MYSQL_DSN", "mysql://user:password@host:3306/db")
+ELOQKV_DSN = os.getenv("ELOQKV_DSN", "redis://host:6379")
 
 
 def get_mysql_conn():
-    """TODO: 返回真实 MySQL 连接。"""
+    """
+    返回 MySQL 连接；需要安装 mysql-connector-python 或 pymysql。
+    用实际库替换注释。
+    """
     # import mysql.connector
     # return mysql.connector.connect(MYSQL_DSN)
     raise NotImplementedError("Replace with real MySQL connector and DSN")
 
 
 def get_eloqkv_client():
-    """TODO: 返回真实 EloqKV 客户端。"""
+    """
+    返回 EloqKV 客户端；可兼容 redis 协议。
+    用实际库替换注释。
+    """
     # import redis
     # return redis.Redis.from_url(ELOQKV_DSN, decode_responses=True)
     raise NotImplementedError("Replace with real EloqKV client and DSN")
@@ -43,9 +50,9 @@ def hash_dict(d: Dict[str, Any]) -> str:
     return m.hexdigest()
 
 
-def migrate_users() -> List[str]:
-    """示例：迁移用户表，返回校验哈希列表."""
-    # TODO: 用 SQL 查询 sys_user
+def migrate_users(since: Optional[str] = None) -> List[str]:
+    """示例：迁移用户表，返回校验哈希列表。"""
+    # TODO: 用 SQL 查询 sys_user，支持 since 过滤
     rows: List[Dict[str, Any]] = []
     client = get_eloqkv_client()
     hashes: List[str] = []
@@ -56,9 +63,9 @@ def migrate_users() -> List[str]:
     return hashes
 
 
-def migrate_devices() -> List[str]:
-    """示例：迁移设备表，返回校验哈希列表."""
-    # TODO: SQL 查询 ai_device
+def migrate_devices(since: Optional[str] = None) -> List[str]:
+    """示例：迁移设备表，返回校验哈希列表。"""
+    # TODO: SQL 查询 ai_device，支持 since 过滤
     rows: List[Dict[str, Any]] = []
     client = get_eloqkv_client()
     hashes: List[str] = []
@@ -69,8 +76,9 @@ def migrate_devices() -> List[str]:
     return hashes
 
 
-def migrate_agents() -> List[str]:
-    """示例：迁移 agent 配置."""
+def migrate_agents(since: Optional[str] = None) -> List[str]:
+    """示例：迁移 agent 配置。"""
+    # TODO: SQL 查询 agent 配置，支持 since 过滤
     rows: List[Dict[str, Any]] = []
     client = get_eloqkv_client()
     hashes: List[str] = []
@@ -100,6 +108,7 @@ def migrate_chat_shard(date_str: str) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(description="EloqKV migration (skeleton)")
     parser.add_argument("--mode", choices=["full", "incremental"], default="full")
+    parser.add_argument("--since", help="增量迁移起始时间戳或日期", default=None)
     args = parser.parse_args()
 
     if args.mode == "full":
@@ -108,8 +117,10 @@ def main() -> None:
         migrate_agents()
         # TODO: 增补会话/聊天分片
     else:
-        # TODO: 增量逻辑
-        pass
+        migrate_users(since=args.since)
+        migrate_devices(since=args.since)
+        migrate_agents(since=args.since)
+        # TODO: 增量聊天分片
 
     print("Migration skeleton completed (fill TODOs before production run).")
 

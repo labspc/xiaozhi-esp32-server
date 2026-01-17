@@ -7,14 +7,14 @@
 
 ## 步骤
 1) 配置：
-   - 填写 `MYSQL_DSN`、`ELOQKV_DSN`，替换连接实现。
+   - 填写 `MYSQL_DSN`、`ELOQKV_DSN`（可用环境变量覆盖），替换连接实现。
    - 补全 SQL 查询（用户/设备/agent/会话/聊天分片）与增量条件。
 2) 影子迁移（推荐）：
    - 运行：`python scripts/migrations/eloqkv_migrate.py --mode full`（影子目标）。
    - 校验：输出行数、哈希列表；抽样业务查询对比 MySQL/Redis。
    - 影子读：在新服务只读方式读取 EloqKV，确保业务查询一致。
 3) 增量/双写（可选）：
-   - 为变更表启用双写或定期增量迁移；记录 offset/timestamp。
+   - 为变更表启用双写或定期增量迁移；记录 offset/timestamp；可用 `--mode incremental --since <ts>`。
 4) 切换前校验：
    - 行数/哈希比对通过；关键查询一致；聊天分片数量对齐。
 5) 切换：
