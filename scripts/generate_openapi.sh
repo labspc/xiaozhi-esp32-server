@@ -157,7 +157,9 @@ cat > "$OUTPUT" <<'EOF'
       "Error": {
         "type": "object",
         "properties": {
-          "error": { "type": "string", "nullable": true }
+          "error": { "type": "string", "nullable": true },
+          "content": { "type": "string", "nullable": true },
+          "data": { "type": "string", "format": "binary", "nullable": true }
         }
       }
     },
