@@ -1,0 +1,14 @@
+# Phase3 Mojo 性能优化计划（占位）
+
+## 目标
+- 为音频关键路径提供 Mojo 加速（Opus/PCM/VAD），通过 FFI 暴露给 Python。
+- 提供回退开关，保持功能可用。
+
+## 任务建议
+1) 定义 C ABI 接口（opus_decode/encode、pcm_to_float、vad_energy）。
+2) Mojo 模块实现与测试；导出共享库。
+3) Python FFI 封装与配置切换；回退到 Python 实现。
+4) 基准测试：延迟/吞吐对比，更新文档。
+
+## 状态
+- 未实现，目录与 README 占位已创建（`main/xiaozhi-server/mojo/`）。
