@@ -248,8 +248,9 @@ async fn handle_socket(mut stream: axum::extract::ws::WebSocket) {
             axum::extract::ws::Message::Text(text) => {
                 match call_python_text(&text) {
                     Ok(Some(out)) => {
+                        let payload = serde_json::json!({ "content": out });
                         if stream
-                            .send(axum::extract::ws::Message::Text(out))
+                            .send(axum::extract::ws::Message::Text(payload.to_string()))
                             .await
                             .is_err()
                         {
@@ -257,8 +258,9 @@ async fn handle_socket(mut stream: axum::extract::ws::WebSocket) {
                         }
                     }
                     Ok(None) => {
+                        let payload = serde_json::json!({ "content": text });
                         if stream
-                            .send(axum::extract::ws::Message::Text(text))
+                            .send(axum::extract::ws::Message::Text(payload.to_string()))
                             .await
                             .is_err()
                         {
@@ -266,6 +268,10 @@ async fn handle_socket(mut stream: axum::extract::ws::WebSocket) {
                         }
                     }
                     Err(err) => {
+                        let payload = serde_json::json!({ "error": format!("{:?}", err) });
+                        let _ = stream
+                            .send(axum::extract::ws::Message::Text(payload.to_string()))
+                            .await;
                         error!("python text error: {:?}", err);
                     }
                 }
@@ -300,8 +306,12 @@ fn call_python_text(text: &str) -> PyResult<Option<String>> {
         let res = func.call1((text,))?;
         if res.is_none() {
             Ok(None)
+        } else if let Ok(s) = res.extract::<String>() {
+            Ok(Some(s))
+        } else if let Ok(map) = res.extract::<std::collections::HashMap<String, String>>() {
+            Ok(map.get("content").cloned())
         } else {
-            Ok(Some(res.extract::<String>()?))
+            Ok(None)
         }
     })
 }

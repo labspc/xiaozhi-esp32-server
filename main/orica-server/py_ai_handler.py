@@ -1,25 +1,35 @@
 """
 Python AI Handler 协议（示例实现）
 
-约定：
-- 文本消息：handle_text 接收 str，返回 str 作为回复，返回 None 表示回显原文。
-- 二进制消息：handle_binary 接收 bytes（可选 meta），返回 bytes 作为处理结果，返回 None 表示不回传。
+文本消息协议：
+- 输入：字符串
+- 输出：
+  - 返回 None：服务器回显原文
+  - 返回字符串：服务器发送该字符串
+  - 返回 dict：期望字段 { "content": str, "error": str|None }，content 优先
 
-可根据实际需求扩展 meta（如采样率/格式/会话 ID），并引入真实模型/工具调用。
+二进制消息协议（音频等）：
+- 输入：bytes，meta 可包含 { "sample_rate": int, "format": str, "session_id": str }
+- 输出：
+  - None：不回传
+  - bytes：处理后的数据（例如编码后的音频帧）
+  - dict：期望字段 { "data": bytes, "error": str|None }
+
+请替换示例逻辑为真实 AI 调用（ASR/LLM/TTS）。
 """
-
-def handle_text(text: str) -> str | None:
-    """
-    文本处理示例：前缀回复，替换为真实 LLM/工具链调用。
-    """
-    # TODO: 接入真实 AI 处理
-    return f"[AI] {text}"
+from typing import Any, Dict, Optional, Union
 
 
-def handle_binary(data: bytes, meta: dict | None = None) -> bytes | None:
-    """
-    二进制处理示例：当前不处理，返回 None。
-    可在此添加音频解码、识别或特征提取，并返回处理后的数据。
-    """
+TextResult = Union[str, Dict[str, Any], None]
+BinaryResult = Union[bytes, Dict[str, Any], None]
+
+
+def handle_text(text: str) -> TextResult:
+    # TODO: 接入真实 LLM/工具链，按需返回 dict 或 str
+    return {"content": f"[AI reply] {text}"}
+
+
+def handle_binary(data: bytes, meta: Optional[dict] = None) -> BinaryResult:
+    # TODO: 处理音频/二进制，按需返回 dict 或 bytes
     _ = (data, meta)
     return None

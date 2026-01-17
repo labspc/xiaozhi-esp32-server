@@ -13,6 +13,7 @@ cat > "$OUTPUT" <<'EOF'
     "/api/auth/login": {
       "post": {
         "summary": "Login",
+        "description": "Returns bearer token",
         "requestBody": {
           "required": true,
           "content": {
