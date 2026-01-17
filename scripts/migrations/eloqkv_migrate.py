@@ -97,7 +97,7 @@ def migrate_devices(since: Optional[str] = None, dry_run: bool = False) -> List[
     """
     conn = get_mysql_conn()
     cursor = conn.cursor(dictionary=True)
-    sql = "SELECT mac_address, user_id, agent_id, last_connected_at as last_seen, firmware_version, board, alias FROM ai_device"
+    sql = "SELECT mac_address, user_id, agent_id, last_connected_at as last_seen, firmware_version, board, alias, update_date FROM ai_device"
     if since:
         sql += " WHERE update_date >= %s"
         cursor.execute(sql, (since,))
@@ -122,7 +122,7 @@ def migrate_agents(since: Optional[str] = None, dry_run: bool = False) -> List[s
     conn = get_mysql_conn()
     cursor = conn.cursor(dictionary=True)
     sql = """
-    SELECT id, agent_name as name, asr_model_id, vad_model_id, llm_model_id
+    SELECT id, agent_name as name, asr_model_id, vad_model_id, llm_model_id, update_date
     FROM ai_agent
     """
     if since:
@@ -141,7 +141,7 @@ def migrate_agents(since: Optional[str] = None, dry_run: bool = False) -> List[s
     return hashes
 
 
-def migrate_chat_shard(date_str: str, dry_run: bool = False) -> int:
+def migrate_chat_shard(date_str: str, dry_run: bool = False) -> Tuple[int, List[str]]:
     """
     示例：迁移某日的聊天分片。
     返回迁移条数，用于统计。
@@ -159,13 +159,15 @@ def migrate_chat_shard(date_str: str, dry_run: bool = False) -> int:
     messages: List[Dict[str, Any]] = cursor.fetchall()  # type: ignore
     client = get_eloqkv_client()
     count = 0
+    hashes: List[str] = []
     for msg in messages:
         device = msg["device"]
         key = f"chat:{device}:{date_str}"
         if not dry_run:
             client.rpush(key, msg)  # type: ignore[attr-defined]
         count += 1
-    return count
+        hashes.append(hash_dict(msg))
+    return count, hashes
 
 
 def migrate_sessions(since: Optional[str] = None, dry_run: bool = False) -> List[str]:
@@ -198,7 +200,7 @@ def migrate_models(since: Optional[str] = None, dry_run: bool = False) -> List[s
     """
     conn = get_mysql_conn()
     cursor = conn.cursor(dictionary=True)
-    sql = "SELECT id, model_type, model_name, config_json FROM ai_model_config"
+    sql = "SELECT id, model_type, model_name, config_json, update_date FROM ai_model_config"
     params: tuple = ()
     if since:
         sql += " WHERE update_date >= %s"
@@ -222,31 +224,65 @@ def main() -> None:
     parser.add_argument("--chat-date", help="迁移指定日期的聊天分片 (YYYYMMDD)", default=None)
     parser.add_argument("--dry-run", action="store_true", help="仅打印数量，不写入 EloqKV")
     parser.add_argument("--report", help="校验报告输出路径", default=None)
+    parser.add_argument("--sample", type=int, default=5, help="抽样哈希条数输出")
     args = parser.parse_args()
 
     dry_run = args.dry_run
     report: List[Tuple[str, int]] = []
+    samples: List[Tuple[str, List[str]]] = []
 
     if args.mode == "full":
-        report.append(("users", len(migrate_users(dry_run=dry_run))))
-        report.append(("devices", len(migrate_devices(dry_run=dry_run))))
-        report.append(("agents", len(migrate_agents(dry_run=dry_run))))
-        report.append(("sessions", len(migrate_sessions(dry_run=dry_run))))
-        report.append(("models", len(migrate_models(dry_run=dry_run))))
+        hashes_users = migrate_users(dry_run=dry_run)
+        report.append(("users", len(hashes_users)))
+        samples.append(("users", hashes_users[: args.sample]))
+
+        hashes_devices = migrate_devices(dry_run=dry_run)
+        report.append(("devices", len(hashes_devices)))
+        samples.append(("devices", hashes_devices[: args.sample]))
+
+        hashes_agents = migrate_agents(dry_run=dry_run)
+        report.append(("agents", len(hashes_agents)))
+        samples.append(("agents", hashes_agents[: args.sample]))
+
+        hashes_sessions = migrate_sessions(dry_run=dry_run)
+        report.append(("sessions", len(hashes_sessions)))
+        samples.append(("sessions", hashes_sessions[: args.sample]))
+
+        hashes_models = migrate_models(dry_run=dry_run)
+        report.append(("models", len(hashes_models)))
+        samples.append(("models", hashes_models[: args.sample]))
+
         if args.chat_date:
-            count = migrate_chat_shard(args.chat_date, dry_run=dry_run)
+            count, hash_chat = migrate_chat_shard(args.chat_date, dry_run=dry_run)
             report.append((f"chat:{args.chat_date}", count))
+            samples.append((f"chat:{args.chat_date}", hash_chat[: args.sample]))
         else:
             print("⚠️  chat-date 未指定，聊天分片未迁移", file=sys.stderr)
     else:
-        report.append(("users", len(migrate_users(since=args.since, dry_run=dry_run))))
-        report.append(("devices", len(migrate_devices(since=args.since, dry_run=dry_run))))
-        report.append(("agents", len(migrate_agents(since=args.since, dry_run=dry_run))))
-        report.append(("sessions", len(migrate_sessions(since=args.since, dry_run=dry_run))))
-        report.append(("models", len(migrate_models(since=args.since, dry_run=dry_run))))
+        hashes_users = migrate_users(since=args.since, dry_run=dry_run)
+        report.append(("users", len(hashes_users)))
+        samples.append(("users", hashes_users[: args.sample]))
+
+        hashes_devices = migrate_devices(since=args.since, dry_run=dry_run)
+        report.append(("devices", len(hashes_devices)))
+        samples.append(("devices", hashes_devices[: args.sample]))
+
+        hashes_agents = migrate_agents(since=args.since, dry_run=dry_run)
+        report.append(("agents", len(hashes_agents)))
+        samples.append(("agents", hashes_agents[: args.sample]))
+
+        hashes_sessions = migrate_sessions(since=args.since, dry_run=dry_run)
+        report.append(("sessions", len(hashes_sessions)))
+        samples.append(("sessions", hashes_sessions[: args.sample]))
+
+        hashes_models = migrate_models(since=args.since, dry_run=dry_run)
+        report.append(("models", len(hashes_models)))
+        samples.append(("models", hashes_models[: args.sample]))
+
         if args.chat_date:
-            count = migrate_chat_shard(args.chat_date, dry_run=dry_run)
+            count, hash_chat = migrate_chat_shard(args.chat_date, dry_run=dry_run)
             report.append((f"chat:{args.chat_date}", count))
+            samples.append((f"chat:{args.chat_date}", hash_chat[: args.sample]))
         else:
             print("⚠️  chat-date 未指定，聊天分片增量未迁移", file=sys.stderr)
 
@@ -255,9 +291,14 @@ def main() -> None:
         with open(args.report, "w", encoding="utf-8") as f:
             for name, cnt in report:
                 f.write(f"{name},{cnt}\n")
+            f.write("samples:\n")
+            for name, s in samples:
+                f.write(f"{name}:{';'.join(s)}\n")
     else:
         for name, cnt in report:
             print(f"{name}: {cnt}")
+        for name, s in samples:
+            print(f"sample {name}: {s}")
 
 
 if __name__ == "__main__":
