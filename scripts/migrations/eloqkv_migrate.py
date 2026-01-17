@@ -26,9 +26,13 @@ def get_mysql_conn():
     返回 MySQL 连接；需要安装 mysql-connector-python 或 pymysql。
     用实际库替换注释。
     """
-    # import mysql.connector
-    # return mysql.connector.connect(MYSQL_DSN)
-    raise NotImplementedError("Replace with real MySQL connector and DSN")
+    try:
+        import mysql.connector  # type: ignore
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError("Please install mysql-connector-python") from exc
+    # DSN 示例：mysql+mysqlconnector://user:password@host:3306/db 不直接被 mysql.connector 解析
+    # 用户需根据环境拆分 DSN；这里简化为使用环境变量各项
+    return mysql.connector.connect(option_files=None, option_groups=None, dsn=MYSQL_DSN)
 
 
 def get_eloqkv_client():
@@ -36,9 +40,11 @@ def get_eloqkv_client():
     返回 EloqKV 客户端；可兼容 redis 协议。
     用实际库替换注释。
     """
-    # import redis
-    # return redis.Redis.from_url(ELOQKV_DSN, decode_responses=True)
-    raise NotImplementedError("Replace with real EloqKV client and DSN")
+    try:
+        import redis  # type: ignore
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError("Please install redis-py (pip install redis)") from exc
+    return redis.Redis.from_url(ELOQKV_DSN, decode_responses=True)
 
 
 def hash_dict(d: Dict[str, Any]) -> str:
@@ -52,8 +58,15 @@ def hash_dict(d: Dict[str, Any]) -> str:
 
 def migrate_users(since: Optional[str] = None) -> List[str]:
     """示例：迁移用户表，返回校验哈希列表。"""
-    # TODO: 用 SQL 查询 sys_user，支持 since 过滤
-    rows: List[Dict[str, Any]] = []
+    conn = get_mysql_conn()
+    cursor = conn.cursor(dictionary=True)
+    sql = "SELECT id, username, password, email, create_date as created_at, update_date as updated_at FROM sys_user"
+    if since:
+        sql += " WHERE update_date >= %s"
+        cursor.execute(sql, (since,))
+    else:
+        cursor.execute(sql)
+    rows: List[Dict[str, Any]] = cursor.fetchall()  # type: ignore
     client = get_eloqkv_client()
     hashes: List[str] = []
     for row in rows:
@@ -65,8 +78,15 @@ def migrate_users(since: Optional[str] = None) -> List[str]:
 
 def migrate_devices(since: Optional[str] = None) -> List[str]:
     """示例：迁移设备表，返回校验哈希列表。"""
-    # TODO: SQL 查询 ai_device，支持 since 过滤
-    rows: List[Dict[str, Any]] = []
+    conn = get_mysql_conn()
+    cursor = conn.cursor(dictionary=True)
+    sql = "SELECT mac_address, user_id, agent_id, last_connected_at as last_seen, firmware_version, board, alias FROM ai_device"
+    if since:
+        sql += " WHERE update_date >= %s"
+        cursor.execute(sql, (since,))
+    else:
+        cursor.execute(sql)
+    rows: List[Dict[str, Any]] = cursor.fetchall()  # type: ignore
     client = get_eloqkv_client()
     hashes: List[str] = []
     for row in rows:
@@ -78,8 +98,18 @@ def migrate_devices(since: Optional[str] = None) -> List[str]:
 
 def migrate_agents(since: Optional[str] = None) -> List[str]:
     """示例：迁移 agent 配置。"""
-    # TODO: SQL 查询 agent 配置，支持 since 过滤
-    rows: List[Dict[str, Any]] = []
+    conn = get_mysql_conn()
+    cursor = conn.cursor(dictionary=True)
+    sql = """
+    SELECT id, agent_name as name, asr_model_id, vad_model_id, llm_model_id
+    FROM ai_agent
+    """
+    if since:
+        sql += " WHERE update_date >= %s"
+        cursor.execute(sql, (since,))
+    else:
+        cursor.execute(sql)
+    rows: List[Dict[str, Any]] = cursor.fetchall()  # type: ignore
     client = get_eloqkv_client()
     hashes: List[str] = []
     for row in rows:
