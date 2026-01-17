@@ -194,20 +194,33 @@ async fn websocket_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
     ws.on_upgrade(handle_socket)
 }
 
-async fn handle_socket(stream: axum::extract::ws::WebSocket) {
-    let _ = stream;
-    // 示例：调用 Python 打印日志，可替换为实际 AI 处理
-    if let Err(err) = call_python_stub() {
-        tracing::error!("python stub error: {:?}", err);
+async fn handle_socket(mut stream: axum::extract::ws::WebSocket) {
+    // 简单回显并调用 Python 处理文本消息；遵守简单控制流
+    while let Some(Ok(msg)) = stream.recv().await {
+        match msg {
+            axum::extract::ws::Message::Text(text) => {
+                if let Err(err) = call_python_process(&text) {
+                    tracing::error!("python process error: {:?}", err);
+                }
+                if stream.send(axum::extract::ws::Message::Text(text)).await.is_err() {
+                    break;
+                }
+            }
+            axum::extract::ws::Message::Binary(_bin) => {
+                // TODO: 结合音频帧处理
+            }
+            axum::extract::ws::Message::Close(_) => break,
+            _ => {}
+        }
     }
 }
 
-fn call_python_stub() -> PyResult<()> {
+fn call_python_process(text: &str) -> PyResult<()> {
     Python::with_gil(|py| {
-        let msg = "ws connection received";
         let builtins = py.import_bound("builtins")?;
         let print = builtins.getattr("print")?;
-        print.call1((msg,))?;
+        // TODO: 替换为实际 AI 处理函数
+        print.call1((format!("recv: {}", text),))?;
         Ok(())
     })
 }
