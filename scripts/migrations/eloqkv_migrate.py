@@ -64,7 +64,7 @@ def hash_dict(d: Dict[str, Any]) -> str:
     return m.hexdigest()
 
 
-def migrate_users(since: Optional[str] = None) -> List[str]:
+def migrate_users(since: Optional[str] = None, dry_run: bool = False) -> List[str]:
     """
     迁移用户：写入 user:{id}，并可选建立用户名索引。
     返回校验哈希列表。
@@ -82,14 +82,15 @@ def migrate_users(since: Optional[str] = None) -> List[str]:
     hashes: List[str] = []
     for row in rows:
         key = f"user:{row['id']}"
-        client.hset(key, mapping=row)  # type: ignore[attr-defined]
-        if "username" in row:
-            client.set(f"user:username:{row['username']}", row["id"])  # type: ignore[attr-defined]
+        if not dry_run:
+            client.hset(key, mapping=row)  # type: ignore[attr-defined]
+            if "username" in row:
+                client.set(f"user:username:{row['username']}", row["id"])  # type: ignore[attr-defined]
         hashes.append(hash_dict(row))
     return hashes
 
 
-def migrate_devices(since: Optional[str] = None) -> List[str]:
+def migrate_devices(since: Optional[str] = None, dry_run: bool = False) -> List[str]:
     """
     迁移设备：写入 device:{mac}，并建立用户到设备的索引。
     返回校验哈希列表。
@@ -108,14 +109,15 @@ def migrate_devices(since: Optional[str] = None) -> List[str]:
     for row in rows:
         mac = row["mac_address"]
         key = f"device:{mac}"
-        client.hset(key, mapping=row)  # type: ignore[attr-defined]
-        if row.get("user_id"):
-            client.sadd(f"device:user:{row['user_id']}", mac)  # type: ignore[attr-defined]
+        if not dry_run:
+            client.hset(key, mapping=row)  # type: ignore[attr-defined]
+            if row.get("user_id"):
+                client.sadd(f"device:user:{row['user_id']}", mac)  # type: ignore[attr-defined]
         hashes.append(hash_dict(row))
     return hashes
 
 
-def migrate_agents(since: Optional[str] = None) -> List[str]:
+def migrate_agents(since: Optional[str] = None, dry_run: bool = False) -> List[str]:
     """迁移 agent 配置。"""
     conn = get_mysql_conn()
     cursor = conn.cursor(dictionary=True)
@@ -133,12 +135,13 @@ def migrate_agents(since: Optional[str] = None) -> List[str]:
     hashes: List[str] = []
     for row in rows:
         key = f"agent:{row['id']}"
-        client.hset(key, mapping=row)  # type: ignore[attr-defined]
+        if not dry_run:
+            client.hset(key, mapping=row)  # type: ignore[attr-defined]
         hashes.append(hash_dict(row))
     return hashes
 
 
-def migrate_chat_shard(date_str: str) -> int:
+def migrate_chat_shard(date_str: str, dry_run: bool = False) -> int:
     """
     示例：迁移某日的聊天分片。
     返回迁移条数，用于统计。
@@ -149,12 +152,13 @@ def migrate_chat_shard(date_str: str) -> int:
     count = 0
     for msg in messages:
         key = f"chat:{msg['device']}:{date_str}"
-        client.rpush(key, msg)  # type: ignore[attr-defined]
+        if not dry_run:
+            client.rpush(key, msg)  # type: ignore[attr-defined]
         count += 1
     return count
 
 
-def migrate_sessions(since: Optional[str] = None) -> List[str]:
+def migrate_sessions(since: Optional[str] = None, dry_run: bool = False) -> List[str]:
     """
     迁移会话/token：写入 session:{token}。
     注意：需要按实际表/字段调整查询。
@@ -172,12 +176,13 @@ def migrate_sessions(since: Optional[str] = None) -> List[str]:
     hashes: List[str] = []
     for row in rows:
         key = f"session:{row['token']}"
-        client.hset(key, mapping=row)  # type: ignore[attr-defined]
+        if not dry_run:
+            client.hset(key, mapping=row)  # type: ignore[attr-defined]
         hashes.append(hash_dict(row))
     return hashes
 
 
-def migrate_models(since: Optional[str] = None) -> List[str]:
+def migrate_models(since: Optional[str] = None, dry_run: bool = False) -> List[str]:
     """
     迁移模型配置：按实际表/字段调整。
     """
@@ -194,7 +199,8 @@ def migrate_models(since: Optional[str] = None) -> List[str]:
     hashes: List[str] = []
     for row in rows:
         key = f"model:{row['model_type']}:{row['model_name']}"
-        client.hset(key, mapping=row)  # type: ignore[attr-defined]
+        if not dry_run:
+            client.hset(key, mapping=row)  # type: ignore[attr-defined]
         hashes.append(hash_dict(row))
     return hashes
 
@@ -207,24 +213,26 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="仅打印数量，不写入 EloqKV")
     args = parser.parse_args()
 
+    dry_run = args.dry_run
+
     if args.mode == "full":
-        migrate_users()
-        migrate_devices()
-        migrate_agents()
-        migrate_sessions()
-        migrate_models()
+        migrate_users(dry_run=dry_run)
+        migrate_devices(dry_run=dry_run)
+        migrate_agents(dry_run=dry_run)
+        migrate_sessions(dry_run=dry_run)
+        migrate_models(dry_run=dry_run)
         if args.chat_date:
-            migrate_chat_shard(args.chat_date)
+            migrate_chat_shard(args.chat_date, dry_run=dry_run)
         else:
             print("⚠️  chat-date 未指定，聊天分片未迁移", file=sys.stderr)
     else:
-        migrate_users(since=args.since)
-        migrate_devices(since=args.since)
-        migrate_agents(since=args.since)
-        migrate_sessions(since=args.since)
-        migrate_models(since=args.since)
+        migrate_users(since=args.since, dry_run=dry_run)
+        migrate_devices(since=args.since, dry_run=dry_run)
+        migrate_agents(since=args.since, dry_run=dry_run)
+        migrate_sessions(since=args.since, dry_run=dry_run)
+        migrate_models(since=args.since, dry_run=dry_run)
         if args.chat_date:
-            migrate_chat_shard(args.chat_date)
+            migrate_chat_shard(args.chat_date, dry_run=dry_run)
         else:
             print("⚠️  chat-date 未指定，聊天分片增量未迁移", file=sys.stderr)
 

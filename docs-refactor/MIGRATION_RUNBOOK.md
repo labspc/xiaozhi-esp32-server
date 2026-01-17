@@ -11,7 +11,7 @@
    - 填写 `MYSQL_DSN`、`ELOQKV_DSN`（可用环境变量覆盖），替换连接实现。
    - 补全 SQL 查询（用户/设备/agent/会话/聊天分片）与增量条件。
 2) 影子迁移（推荐）：
-   - 运行：`python scripts/migrations/eloqkv_migrate.py --mode full`（影子目标）。
+   - 运行：`python scripts/migrations/eloqkv_migrate.py --mode full --dry-run`（验证），确认无误后去掉 `--dry-run` 写入影子实例。
    - 校验：输出行数、哈希列表；抽样业务查询对比 MySQL/Redis。
    - 影子读：在新服务只读方式读取 EloqKV，确保业务查询一致。
 3) 增量/双写（可选）：
