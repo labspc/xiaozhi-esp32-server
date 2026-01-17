@@ -5,6 +5,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use pyo3::prelude::*;
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -194,8 +195,21 @@ async fn websocket_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
 }
 
 async fn handle_socket(stream: axum::extract::ws::WebSocket) {
-    // TODO: PyO3 call into Python AI logic
     let _ = stream;
+    // 示例：调用 Python 打印日志，可替换为实际 AI 处理
+    if let Err(err) = call_python_stub() {
+        tracing::error!("python stub error: {:?}", err);
+    }
+}
+
+fn call_python_stub() -> PyResult<()> {
+    Python::with_gil(|py| {
+        let msg = "ws connection received";
+        let builtins = py.import("builtins")?;
+        let print = builtins.getattr("print")?;
+        print.call1((msg,))?;
+        Ok(())
+    })
 }
 
 #[tokio::main]
