@@ -23,22 +23,28 @@ BinaryResult = Union[bytes, Dict[str, Any], None]
 
 def handle_text(text: str) -> TextResult:
     """
-    简单逻辑示例：
-    - 如果输入为空，返回错误
-    - 否则返回大写内容作为“AI 回复”
+    文本处理示例：
+    - 空文本返回错误
+    - 其他情况：模拟 LLM 回复
     """
     if not text.strip():
         return {"content": None, "error": "empty text"}
-    return {"content": f"[AI] {text.upper()}", "error": None}
+
+    # TODO: 替换为真实 LLM/工具链调用
+    reply = f"[AI simulated reply] {text}"
+    return {"content": reply, "error": None}
 
 
 def handle_binary(data: bytes, meta: Optional[dict] = None) -> BinaryResult:
     """
-    简单逻辑示例：
-    - 如果二进制为空，返回错误
-    - 否则直接回传数据（可替换为音频处理）
+    二进制/音频处理示例：
+    - 空数据返回错误
+    - 读取 meta（如 sample_rate/format/session_id），可据此调用 ASR/TTS
+    - 当前逻辑只返回错误或原始数据
     """
     if not data:
         return {"data": None, "error": "empty binary"}
-    # 可在此做解码/特征提取/推理
+
+    # TODO: 替换为真实音频处理：解码/识别/合成
+    _ = meta
     return {"data": data, "error": None}
