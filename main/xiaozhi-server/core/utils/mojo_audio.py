@@ -102,4 +102,4 @@ def log_mojo_audio_status(logger_obj: Optional[logging.Logger] = None) -> None:
             mojo.load_error,
         )
     else:
-        log.info("Mojo audio unavailable: %s", mojo.load_error)
+        log.info("Mojo audio unavailable: %s", mojo.load_error or "unknown reason")

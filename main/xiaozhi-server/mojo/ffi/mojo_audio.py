@@ -26,6 +26,8 @@ class MojoAudioFFI:
         self._load_error: Optional[str] = None
         if self.enabled:
             self._load()
+        else:
+            self._load_error = "disabled by config/env"
 
     @property
     def available(self) -> bool:
