@@ -8,7 +8,6 @@ import queue
 import asyncio
 import traceback
 import threading
-import opuslib_next
 from abc import ABC, abstractmethod
 from config.logger import setup_logging
 from typing import Optional, Tuple, List
@@ -16,6 +15,7 @@ from core.handle.receiveAudioHandle import startToChat
 from core.handle.reportHandle import enqueue_asr_report
 from core.utils.util import remove_punctuation_and_length
 from core.handle.receiveAudioHandle import handleAudioMessage
+from core.utils.mojo_audio import decode_opus_packets
 
 TAG = __name__
 logger = setup_logging()
@@ -230,34 +230,8 @@ class ASRProviderBase(ABC):
     @staticmethod
     def decode_opus(opus_data: List[bytes]) -> List[bytes]:
         """将Opus音频数据解码为PCM数据"""
-        decoder = None
         try:
-            decoder = opuslib_next.Decoder(16000, 1)
-            pcm_data = []
-            buffer_size = 960  # 每次处理960个采样点 (60ms at 16kHz)
-            
-            for i, opus_packet in enumerate(opus_data):
-                try:
-                    if not opus_packet or len(opus_packet) == 0:
-                        continue
-                    
-                    pcm_frame = decoder.decode(opus_packet, buffer_size)
-                    if pcm_frame and len(pcm_frame) > 0:
-                        pcm_data.append(pcm_frame)
-                        
-                except opuslib_next.OpusError as e:
-                    logger.bind(tag=TAG).warning(f"Opus解码错误，跳过数据包 {i}: {e}")
-                except Exception as e:
-                    logger.bind(tag=TAG).error(f"音频处理错误，数据包 {i}: {e}")
-            
-            return pcm_data
-            
+            return decode_opus_packets(opus_data, sample_rate=16000, channels=1)
         except Exception as e:
             logger.bind(tag=TAG).error(f"音频解码过程发生错误: {e}")
             return []
-        finally:
-            if decoder is not None:
-                try:
-                    del decoder
-                except Exception as e:
-                    logger.bind(tag=TAG).debug(f"释放decoder资源时出错: {e}")
