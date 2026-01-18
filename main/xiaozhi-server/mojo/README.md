@@ -26,3 +26,15 @@ Python 侧：使用 `ctypes`/`cffi`，需提供 out buffer 与检查返回值，
 本地构建提示：
 - 依赖系统 `libopus`（Homebrew: `brew install opus`）。已在 `.cargo/config.toml` 中写入 `PKG_CONFIG_PATH=/opt/homebrew/opt/opus/lib/pkgconfig`，确保优先使用系统包，避免 CMake 重新编译。
 - `cargo build` 生成 `target/debug/libmojo_audio.dylib`（或对应 release 版本）。
+
+Python FFI 封装：
+- `mojo/ffi/mojo_audio.py` 提供 `MojoAudioFFI`，优先加载 `MOJO_AUDIO_LIB` 指定的共享库，回退到默认 `target/{release,debug}/libmojo_audio.*`。当库不可用时，会自动回退到 `opuslib_next`/纯 Python 实现。
+- 示例：
+  ```python
+  from mojo.ffi import MojoAudioFFI
+
+  mojo = MojoAudioFFI()
+  pcm_bytes = mojo.decode_opus(opus_packet)  # bytes or None
+  float_bytes = mojo.pcm_to_float(pcm_bytes or b"")
+  energy = mojo.vad_energy(float_bytes or b"")
+  ```
