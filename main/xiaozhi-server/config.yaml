@@ -79,6 +79,11 @@ enable_websocket_ping: false
 #   > 0: 使用固定延迟（毫秒）发送，例如: 60
 tts_audio_send_delay: 0
 
+# Mojo 加速配置（可选）
+mojo:
+  audio_enabled: true   # 允许使用 Mojo 音频加速；可用环境变量 MOJO_AUDIO_ENABLED=0 禁用
+  audio_lib: ""         # 自定义 libmojo_audio 路径；可用环境变量 MOJO_AUDIO_LIB 覆盖
+
 exit_commands:
   - "退出"
   - "关闭"

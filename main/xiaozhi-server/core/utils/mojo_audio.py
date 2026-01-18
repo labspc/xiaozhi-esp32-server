@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Mapping, Optional
 
 try:
     import opuslib_next
@@ -14,6 +14,8 @@ except ImportError:  # pragma: no cover - optional dependency location
 
 logger = logging.getLogger(__name__)
 _mojo_audio: Optional["MojoAudioFFI"] = None
+_preferred_enabled: Optional[bool] = None
+_preferred_lib_path: Optional[str] = None
 
 
 def _get_mojo_audio() -> Optional["MojoAudioFFI"]:
@@ -23,8 +25,10 @@ def _get_mojo_audio() -> Optional["MojoAudioFFI"]:
     if MojoAudioFFI is None:
         logger.debug("MojoAudioFFI not available (import failed)")
         return None
-    enabled = os.getenv("MOJO_AUDIO_ENABLED", "1") != "0"
-    lib_path = os.getenv("MOJO_AUDIO_LIB")
+    env_enabled = os.getenv("MOJO_AUDIO_ENABLED")
+    enabled = _preferred_enabled if env_enabled is None else env_enabled != "0"
+    env_lib = os.getenv("MOJO_AUDIO_LIB")
+    lib_path = env_lib or _preferred_lib_path
     _mojo_audio = MojoAudioFFI(lib_path=lib_path or None, enabled=enabled)
     if not _mojo_audio.available and _mojo_audio.load_error:
         logger.info("Mojo audio disabled or unavailable: %s", _mojo_audio.load_error)
@@ -65,3 +69,37 @@ def decode_opus_packets(
         else:
             logger.debug("Opus decode failed for packet %s", idx)
     return pcm_frames
+
+
+def configure_mojo_audio(config: Optional[Mapping] = None) -> None:
+    """
+    Set preferred enable/lib_path from config. Env vars still override.
+    Expected config structure:
+    mojo:
+      audio_enabled: true|false
+      audio_lib: /path/to/libmojo_audio.so
+    """
+    global _preferred_enabled, _preferred_lib_path, _mojo_audio
+    if config and isinstance(config, Mapping):
+        mojo_cfg = config.get("mojo", {}) if isinstance(config.get("mojo", {}), Mapping) else {}
+        if "audio_enabled" in mojo_cfg:
+            _preferred_enabled = bool(mojo_cfg.get("audio_enabled"))
+        if "audio_lib" in mojo_cfg:
+            _preferred_lib_path = mojo_cfg.get("audio_lib") or None
+        _mojo_audio = None  # reset so next access reloads with new config
+
+
+def log_mojo_audio_status(logger_obj: Optional[logging.Logger] = None) -> None:
+    log = logger_obj or logger
+    mojo = _get_mojo_audio()
+    if mojo is None:
+        log.info("Mojo audio not loaded (module missing or disabled)")
+        return
+    if mojo.available:
+        log.info(
+            "Mojo audio enabled (lib=%s, load_error=%s)",
+            getattr(mojo, "_lib_path", None),
+            mojo.load_error,
+        )
+    else:
+        log.info("Mojo audio unavailable: %s", mojo.load_error)
