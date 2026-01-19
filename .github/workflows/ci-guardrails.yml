@@ -28,6 +28,15 @@ jobs:
           set -e
           python -m py_compile main/xiaozhi-server/app.py
 
+      - name: Mojo audio smoke (optional)
+        run: |
+          set -e
+          if [ -f scripts/mojo_smoke_ci.sh ]; then
+            bash scripts/mojo_smoke_ci.sh
+          else
+            echo "Mojo smoke script missing; skipping"
+          fi
+
       - name: Python lint (ruff minimal)
         run: |
           set -e
