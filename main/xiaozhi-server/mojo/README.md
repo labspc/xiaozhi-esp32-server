@@ -38,4 +38,5 @@ Python FFI 封装：
   float_bytes = mojo.pcm_to_float(pcm_bytes or b"")
   energy = mojo.vad_energy(float_bytes or b"")
   ```
+- 快速自检：`scripts/mojo_smoke.sh`（需先安装 `opuslib_next`，可在虚拟环境中执行）。
 - 配置开关：`config.yaml` 可设置 `mojo.audio_enabled`、`mojo.audio_lib`；环境变量 `MOJO_AUDIO_ENABLED`/`MOJO_AUDIO_LIB` 优先，启动日志会输出 Mojo 音频状态。
