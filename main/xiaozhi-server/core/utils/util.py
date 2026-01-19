@@ -10,7 +10,7 @@ import subprocess
 import numpy as np
 from io import BytesIO
 from core.utils import p3
-from core.utils.mojo_audio import decode_opus_packets
+from core.utils.mojo_audio import decode_opus_packets, encode_opus_frame
 import opuslib_next
 from pydub import AudioSegment
 from typing import Callable, Any
@@ -345,9 +345,6 @@ def audio_bytes_to_data_stream(
 
 
 def pcm_to_data_stream(raw_data, is_opus=True, callback: Callable[[Any], Any] = None):
-    # 初始化Opus编码器
-    encoder = opuslib_next.Encoder(16000, 1, opuslib_next.APPLICATION_AUDIO)
-
     # 编码参数
     frame_duration = 60  # 60ms per frame
     frame_size = int(16000 * frame_duration / 1000)  # 960 samples/frame
@@ -362,10 +359,10 @@ def pcm_to_data_stream(raw_data, is_opus=True, callback: Callable[[Any], Any] = 
             chunk += b"\x00" * (frame_size * 2 - len(chunk))
 
         if is_opus:
-            # 转换为numpy数组处理
-            np_frame = np.frombuffer(chunk, dtype=np.int16)
-            # 编码Opus数据
-            frame_data = encoder.encode(np_frame.tobytes(), frame_size)
+            # 尝试 Mojo/opuslib 编码
+            frame_data = encode_opus_frame(chunk, sample_rate=16000, channels=1)
+            if frame_data is None:
+                continue
             callback(frame_data)
         else:
             frame_data = chunk if isinstance(chunk, bytes) else bytes(chunk)

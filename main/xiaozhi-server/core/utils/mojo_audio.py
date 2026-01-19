@@ -103,3 +103,32 @@ def log_mojo_audio_status(logger_obj: Optional[logging.Logger] = None) -> None:
         )
     else:
         log.info("Mojo audio unavailable: %s", mojo.load_error or "unknown reason")
+
+
+def encode_opus_frame(
+    pcm_data: bytes,
+    sample_rate: int = 16_000,
+    channels: int = 1,
+) -> Optional[bytes]:
+    """
+    Encode a PCM frame to Opus using Mojo if available, otherwise opuslib_next.
+    pcm_data: int16 little-endian PCM bytes.
+    """
+    if not pcm_data:
+        return b""
+    mojo = _get_mojo_audio()
+    if mojo:
+        encoded = mojo.encode_opus(pcm_data, sample_rate=sample_rate, channels=channels)
+        if encoded:
+            return encoded
+        logger.debug("Mojo opus_encode fallback to python")
+    if opuslib_next:
+        try:
+            encoder = opuslib_next.Encoder(sample_rate, channels, opuslib_next.APPLICATION_AUDIO)
+            frame_size = max((len(pcm_data) // 2) // max(channels, 1), 1)
+            return encoder.encode(pcm_data, frame_size)
+        except Exception as exc:
+            logger.debug("Opuslib encode failed: %s", exc)
+            return None
+    logger.info("No Opus encoder available (Mojo disabled and opuslib_next missing)")
+    return None

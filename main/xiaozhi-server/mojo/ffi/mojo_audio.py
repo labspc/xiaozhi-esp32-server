@@ -90,6 +90,32 @@ class MojoAudioFFI:
             return float(energy)
         return _vad_energy_python(float_data)
 
+    def encode_opus(
+        self,
+        pcm_data: bytes,
+        sample_rate: int = 16_000,
+        channels: int = 1,
+        max_out: int = 4096,
+    ) -> Optional[bytes]:
+        if not pcm_data:
+            return b""
+        if self._lib:
+            out_buf = (ctypes.c_ubyte * max_out)()
+            in_samples = len(pcm_data) // 2
+            in_buf = (ctypes.c_short * in_samples).from_buffer_copy(pcm_data)
+            rc = self._lib.opus_encode(
+                in_buf,
+                in_samples,
+                sample_rate,
+                channels,
+                out_buf,
+                max_out,
+            )
+            if rc >= 0:
+                return bytes(out_buf[:rc])
+            logger.debug("mojo opus_encode fallback, rc=%s", rc)
+        return _encode_opus_python(pcm_data, sample_rate, channels)
+
     def _load(self) -> None:
         path = self._resolve_lib_path()
         if not path:
@@ -114,6 +140,15 @@ class MojoAudioFFI:
             lib.pcm_to_float.restype = ctypes.c_int
             lib.vad_energy.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_int]
             lib.vad_energy.restype = ctypes.c_float
+            lib.opus_encode.argtypes = [
+                ctypes.POINTER(ctypes.c_short),
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.POINTER(ctypes.c_ubyte),
+                ctypes.c_int,
+            ]
+            lib.opus_encode.restype = ctypes.c_int
             self._lib = lib
             self._lib_path = str(path)
             self._load_error = None
@@ -182,3 +217,36 @@ def _vad_energy_python(float_data: bytes) -> float:
     floats = array("f")
     floats.frombytes(float_data)
     return float(sum(v * v for v in floats))
+
+
+_opuslib_encoders = {}
+
+
+def _get_opus_encoder(sample_rate: int, channels: int):
+    key = (sample_rate, channels)
+    enc = _opuslib_encoders.get(key)
+    if enc is None:
+        try:
+            import opuslib_next
+        except ImportError:
+            return None
+        try:
+            enc = opuslib_next.Encoder(sample_rate, channels, opuslib_next.APPLICATION_AUDIO)
+            _opuslib_encoders[key] = enc
+        except Exception as exc:  # pragma: no cover
+            logger.warning("opuslib encoder init failed: %s", exc)
+            return None
+    return enc
+
+
+def _encode_opus_python(pcm_data: bytes, sample_rate: int, channels: int) -> Optional[bytes]:
+    enc = _get_opus_encoder(sample_rate, channels)
+    if enc is None:
+        logger.warning("opuslib_next missing; cannot encode opus")
+        return None
+    frame_size = max((len(pcm_data) // 2) // max(channels, 1), 1)
+    try:
+        return enc.encode(pcm_data, frame_size)
+    except Exception as exc:
+        logger.warning("python opus encode failed: %s", exc)
+        return None
