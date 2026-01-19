@@ -57,6 +57,25 @@ def bench_decode(opus_frames, mojo: MojoAudioFFI):
     return python_time, mojo_time
 
 
+def bench_decode_batch(opus_frames, mojo: MojoAudioFFI):
+    # Join frames for FFI batch; lengths in bytes
+    joined = b"".join(opus_frames)
+    frame_lens = [len(f) for f in opus_frames]
+
+    # Python baseline: sequential decode
+    decoder = opuslib_next.Decoder(SAMPLE_RATE, CHANNELS)
+    start = time.perf_counter()
+    for frame in opus_frames:
+        decoder.decode(frame, FRAME_SIZE)
+    python_time = time.perf_counter() - start
+
+    # Mojo batch
+    start = time.perf_counter()
+    mojo.decode_opus_batch(joined, frame_lens, sample_rate=SAMPLE_RATE, channels=CHANNELS)
+    mojo_time = time.perf_counter() - start
+    return python_time, mojo_time
+
+
 def bench_encode(pcm_frames, mojo: MojoAudioFFI):
     encoder = opuslib_next.Encoder(SAMPLE_RATE, CHANNELS, opuslib_next.APPLICATION_AUDIO)
     # Python baseline
@@ -83,6 +102,7 @@ def main():
 
     py_time, mojo_time, py_opus, mojo_opus = bench_encode(pcm_frames, mojo)
     decode_py_time, decode_mojo_time = bench_decode(py_opus, mojo)
+    decode_batch_py_time, decode_batch_mojo_time = bench_decode_batch(py_opus, mojo)
 
     print(
         {
@@ -93,6 +113,11 @@ def main():
             "decode_mojo_s": round(decode_mojo_time, 4),
             "decode_speedup": round(decode_py_time / decode_mojo_time, 2)
             if decode_mojo_time
+            else None,
+            "decode_batch_python_s": round(decode_batch_py_time, 4),
+            "decode_batch_mojo_s": round(decode_batch_mojo_time, 4),
+            "decode_batch_speedup": round(decode_batch_py_time / decode_batch_mojo_time, 2)
+            if decode_batch_mojo_time
             else None,
             "mojo_available": mojo.available,
             "load_error": mojo.load_error,
