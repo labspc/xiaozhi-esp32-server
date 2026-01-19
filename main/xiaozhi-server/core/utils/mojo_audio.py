@@ -93,16 +93,16 @@ def log_mojo_audio_status(logger_obj: Optional[logging.Logger] = None) -> None:
     log = logger_obj or logger
     mojo = _get_mojo_audio()
     if mojo is None:
-        log.info("Mojo audio not loaded (module missing or disabled)")
+        log.info("Audio accelerator (Rust ABI, Mojo-compatible) not loaded (module missing or disabled)")
         return
     if mojo.available:
         log.info(
-            "Mojo audio enabled (lib=%s, load_error=%s)",
+            "Audio accelerator enabled (Rust ABI, Mojo-compatible) lib=%s, load_error=%s",
             getattr(mojo, "_lib_path", None),
             mojo.load_error,
         )
     else:
-        log.info("Mojo audio unavailable: %s", mojo.load_error or "unknown reason")
+        log.info("Audio accelerator unavailable: %s", mojo.load_error or "unknown reason")
 
 
 def encode_opus_frame(
