@@ -15,4 +15,5 @@
 - Python 侧提供 `mojo/ffi/MojoAudioFFI`（ctypes 加载 + Python 回退）。
 - 配置开关已接入：`config.yaml` -> `mojo.audio_enabled/audio_lib`（可被环境变量覆盖），启动日志会输出启用/禁用原因。
 - 辅助脚本：`scripts/mojo_smoke.sh` 运行 smoke test（需 `opuslib_next`）。
+- CI 辅助：`scripts/mojo_smoke_ci.sh` 会自建 venv、安装 `opuslib_next` 并运行 smoke test。
 - 后续需替换为 Mojo 实现、补充 encode/VAD 绑定、完善基准和 CI smoke。
