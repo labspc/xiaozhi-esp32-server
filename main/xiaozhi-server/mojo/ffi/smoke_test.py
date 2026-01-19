@@ -7,6 +7,7 @@ import math
 from array import array
 
 from mojo.ffi import MojoAudioFFI
+from mojo.ffi.mojo_audio import split_frames
 
 try:
     import opuslib_next
@@ -36,7 +37,22 @@ def main() -> None:
     assert floats, "pcm_to_float returned empty"
     energy = ffi.vad_energy(floats)
     assert energy is not None
-    print("MojoAudioFFI smoke test ok", {"pcm_len": len(pcm or b''), "energy": energy})
+    encoded = ffi.encode_opus(pcm)
+    assert encoded, "encode_opus returned empty"
+    # batch decode exercise
+    joined = b"".join([packet, packet])
+    frame_lens = [len(packet), len(packet)]
+    pcm_batch = ffi.decode_opus_batch(joined, frame_lens)
+    assert pcm_batch, "decode_opus_batch returned empty"
+    print(
+        "MojoAudioFFI smoke test ok",
+        {
+            "pcm_len": len(pcm or b""),
+            "energy": energy,
+            "encoded_len": len(encoded or b""),
+            "batch_len": len(pcm_batch or b""),
+        },
+    )
 
 
 if __name__ == "__main__":

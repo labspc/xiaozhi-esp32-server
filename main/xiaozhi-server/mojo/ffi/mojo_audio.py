@@ -116,6 +116,48 @@ class MojoAudioFFI:
             logger.debug("mojo opus_encode fallback, rc=%s", rc)
         return _encode_opus_python(pcm_data, sample_rate, channels)
 
+    def decode_opus_batch(
+        self,
+        joined_frames: bytes,
+        frame_lens: list[int],
+        sample_rate: int = 16_000,
+        channels: int = 1,
+    ) -> Optional[bytes]:
+        if not joined_frames or not frame_lens:
+            return b""
+        if self._lib:
+            frames = len(frame_lens)
+            in_lens = (ctypes.c_int * frames)(*frame_lens)
+            offsets = (ctypes.c_int * frames)()
+            # offsets in samples; here sequential
+            cursor_samples = 0
+            for i, _len in enumerate(frame_lens):
+                offsets[i] = cursor_samples
+                cursor_samples += max(_len, 0) * 2  # rough upper bound, conservative
+            out_samples = max(int(sample_rate * 0.12) * frames * max(channels, 1), cursor_samples)
+            out_buf = (ctypes.c_short * out_samples)()
+            in_buf = (ctypes.c_ubyte * len(joined_frames)).from_buffer_copy(joined_frames)
+            rc = self._lib.opus_decode_batch(
+                in_buf,
+                in_lens,
+                frames,
+                sample_rate,
+                channels,
+                out_buf,
+                out_samples,
+                offsets,
+            )
+            if rc >= 0:
+                return array("h", out_buf[: rc * max(channels, 1)]).tobytes()
+            logger.debug("mojo opus_decode_batch fallback, rc=%s", rc)
+        # fallback: decode one by one
+        pcm_all = []
+        for frame in split_frames(joined_frames, frame_lens):
+            decoded = self.decode_opus(frame, sample_rate=sample_rate, channels=channels)
+            if decoded:
+                pcm_all.append(decoded)
+        return b"".join(pcm_all)
+
     def _load(self) -> None:
         path = self._resolve_lib_path()
         if not path:
@@ -149,6 +191,17 @@ class MojoAudioFFI:
                 ctypes.c_int,
             ]
             lib.opus_encode.restype = ctypes.c_int
+            lib.opus_decode_batch.argtypes = [
+                ctypes.POINTER(ctypes.c_ubyte),
+                ctypes.POINTER(ctypes.c_int),
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.POINTER(ctypes.c_short),
+                ctypes.c_int,
+                ctypes.POINTER(ctypes.c_int),
+            ]
+            lib.opus_decode_batch.restype = ctypes.c_int
             self._lib = lib
             self._lib_path = str(path)
             self._load_error = None
@@ -250,3 +303,14 @@ def _encode_opus_python(pcm_data: bytes, sample_rate: int, channels: int) -> Opt
     except Exception as exc:
         logger.warning("python opus encode failed: %s", exc)
         return None
+
+
+def split_frames(joined: bytes, lens: list[int]):
+    frames = []
+    cursor = 0
+    for ln in lens:
+        if ln <= 0:
+            continue
+        frames.append(joined[cursor : cursor + ln])
+        cursor += ln
+    return frames
