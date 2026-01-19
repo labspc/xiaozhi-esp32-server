@@ -1,0 +1,20 @@
+{
+  "name": "orica-svelte",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check"
+  },
+  "devDependencies": {
+    "@sveltejs/kit": "2.5.10",
+    "@sveltejs/vite-plugin-svelte": "3.1.2",
+    "svelte": "4.2.19",
+    "svelte-check": "3.8.4",
+    "typescript": "5.6.3",
+    "vite": "5.3.4"
+  }
+}
