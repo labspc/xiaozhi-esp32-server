@@ -17,4 +17,5 @@
 - 辅助脚本：`scripts/mojo_smoke.sh` 运行 smoke test（需 `opuslib_next`）。
 - CI 辅助：`scripts/mojo_smoke_ci.sh` 会自建 venv、安装 `opuslib_next` 并运行 smoke test。
 - 已补充 Opus encode FFI + Python 封装（编码路径回退）。
+- 基准：`scripts/bench_mojo_audio.py` 对比 Mojo/opuslib 编解码耗时（需 `opuslib_next`）。
 - 后续需替换为 Mojo 实现、补充 VAD 特征/批处理、完善基准。
