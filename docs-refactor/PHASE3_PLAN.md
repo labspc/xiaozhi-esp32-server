@@ -13,4 +13,5 @@
 ## 状态
 - Rust 占位 FFI 已实现并可编译链接系统 `libopus`（`main/xiaozhi-server/mojo/`），导出 `opus_decode`/`pcm_to_float`/`vad_energy`。
 - Python 侧提供 `mojo/ffi/MojoAudioFFI`（ctypes 加载 + Python 回退）。
-- 后续需替换为 Mojo 实现、完善基准与配置开关。
+- 配置开关已接入：`config.yaml` -> `mojo.audio_enabled/audio_lib`（可被环境变量覆盖），启动日志会输出启用/禁用原因。
+- 后续需替换为 Mojo 实现、补充 encode/VAD 绑定、完善基准和 CI smoke。
