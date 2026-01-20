@@ -11,8 +11,8 @@
 
 ## 当前进展
 - 初始化 SvelteKit 骨架（未安装依赖）：`web/` 目录，基础路由/布局、简单日志。
-- 首页、登录、设备列表占位（示例数据 + API stub `apiGet`），无复杂 store/context/actions。
-- 约束内置：组件包含显式日志，样式为简洁暗色基调。
+- 首页、登录、设备/Agent 列表占位（示例数据 + API stub `apiGet`），无复杂 store/context/actions。
+- UI 组件占位：Button/Card，侧边栏布局（简洁暗色基调）。
 
 ## 待办（优先级）
 1) 安装依赖并验证 `npm run dev`/`npm run check`（需联网）。
