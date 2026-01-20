@@ -11,12 +11,13 @@
 
 ## 当前进展
 - 初始化 SvelteKit 骨架（未安装依赖）：`web/` 目录，基础路由/布局、简单日志。
-- 约束内置：无复杂 store/context/actions；组件包含显式日志。
+- 首页、登录、设备列表占位（示例数据 + API stub `apiGet`），无复杂 store/context/actions。
+- 约束内置：组件包含显式日志，样式为简洁暗色基调。
 
 ## 待办（优先级）
 1) 安装依赖并验证 `npm run dev`/`npm run check`（需联网）。
-2) 引入 UI 基础组件（shadcn-svelte 或自定义简化版），搭建登录/侧边栏/设备列表占位。
-3) 封装 API 客户端（对接 Phase2 OpenAPI），实现登录 + 设备/Agent 列表页面。
+2) 引入 UI 基础组件（shadcn-svelte 或自定义简化版），完善登录/侧边栏/设备/Agent 页面。
+3) 封装真实 API 客户端（对接 Phase2 OpenAPI），打通登录 + 设备/Agent 数据。
 4) 国际化/主题占位，准备预览域发布脚本。
 
 ## 运行提示

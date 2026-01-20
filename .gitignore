@@ -119,6 +119,10 @@ venv.bak/
 .spyderproject
 .spyproject
 
+# Allow Svelte src/lib to be tracked
+!web/src/lib/
+!web/src/lib/**/*
+
 # Rope project settings
 .ropeproject
 
@@ -178,6 +182,7 @@ uploadfile
  
 !package.json
 !**/package.json
+!web/**/*.json
 
 # Do not ignore env and json files inside manager-mobile
 !main/manager-mobile/**/env/
